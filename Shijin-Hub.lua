@@ -3648,9 +3648,20 @@ arTick = function()
             or (frontRow
                 and math.clamp(0.30 - math.clamp(speed / 250, 0, 1) * 0.10 + (entry.d / range) * 0.05, 0.25, 0.40)
                 or math.clamp(0.35 - math.clamp(speed / 220, 0, 1) * 0.10 + (entry.d / range) * 0.05, 0.30, 0.45))
-        if last and now - last.t < cooldown then
-            gated = true
-        elseif speed < AutoReceiveMinSpeed then
+        local last = arFiredAt[entry.m]
+        if last then
+            local age = now - last.t
+            local dv = (last.v and (velocity - last.v).Magnitude) or math.huge
+            if age < cooldown then
+                gated = true
+            elseif age < 1.5 and not (dv > 20 and closing > 5 and age > 0.12) then
+                -- Same flight, already pressed: hold fire. A genuine re-hit
+                -- (velocity jumped, ball coming at us) earns a fresh press.
+                gated = true
+            end
+        end
+        if not gated then
+        if speed < AutoReceiveMinSpeed then
             if entry.d < slowDistance then slowDistance = entry.d end
         elseif predD > range then
             if entry.d < farDistance then farDistance = entry.d end
@@ -3662,6 +3673,7 @@ arTick = function()
                 target, targetDistance, targetRange, targetScore, targetFast = entry, predD, range, score, fastIncoming
                 targetEta, targetSpeed = eta, speed
             end
+        end
         end
         end
     end
@@ -3714,7 +3726,7 @@ arTick = function()
     end
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
-        arFiredAt[target.m] = { t = now }
+        arFiredAt[target.m] = { t = now, v = target.p.AssemblyLinearVelocity }
         -- Step-in window follows the press: hold + margin, bounded so a slow
         -- ball costs little control and a fast ball gets the full run.
         local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
@@ -3727,6 +3739,8 @@ arTick = function()
             local gap = (dest - rootPart.Position)
             gap = Vector3.new(gap.X, 0, gap.Z).Magnitude
             if gap > 4 then
+                local gravNow = 196.2
+                pcall(function() gravNow = Workspace.Gravity end)
                 pcall(function() humanoid:MoveTo(dest) end)
                 local t0 = os.clock()
                 local watch
@@ -3735,14 +3749,27 @@ arTick = function()
                         or (os.clock() - t0) > stepWindow
                         or (not humanoid.Parent) or humanoid.Health <= 0
                         or humanoid.MoveDirection.Magnitude > 0.1
-                    if not stop then return end
-                    pcall(function() watch:Disconnect() end)
-                    pcall(function()
-                        if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
-                            local r = char and char:FindFirstChild("HumanoidRootPart")
-                            if r then humanoid:MoveTo(r.Position) end
-                        end
-                    end)
+                    if stop then
+                        pcall(function() watch:Disconnect() end)
+                        pcall(function()
+                            if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
+                                local r = char and char:FindFirstChild("HumanoidRootPart")
+                                if r then humanoid:MoveTo(r.Position) end
+                            end
+                        end)
+                        return
+                    end
+                    -- Live re-prediction: keep walking at the moving forecast
+                    -- so curves and fast balls don't outdate the target.
+                    local bp = target.p
+                    if bp and bp.Parent then
+                        local bv = bp.AssemblyLinearVelocity
+                        local q = bp.Position + bv * arPredictT
+                        q = Vector3.new(q.X, math.max(q.Y - 0.5 * gravNow * arPredictT * arPredictT, 0.5), q.Z)
+                        pcall(function()
+                            humanoid:MoveTo(Vector3.new(q.X, rootPart.Position.Y, q.Z))
+                        end)
+                    end
                 end)
             end
         end
@@ -4782,20 +4809,12 @@ UI.SettingsConfig:AddDropdown({
     end
 })
 local orionActiveSlot = nil
-local orionAutosaveOn = false
-local orionLastSlotJson = nil
 local ConfigActiveLabel = UI.SettingsConfig:AddLabel("Active slot: none")
-local function orionSnapshotActive()
-    pcall(function()
-        orionLastSlotJson = OrionSlotService:JSONEncode(orionPackFlags())
-    end)
-end
 local function orionSetActive(name)
     orionActiveSlot = name
     pcall(function()
         ConfigActiveLabel:Set("Active slot: " .. (name or "none"))
     end)
-    orionSnapshotActive()
 end
 UI.SettingsConfig:AddButton({
     Name = "Create config",
@@ -4844,21 +4863,6 @@ UI.SettingsConfig:AddButton({
         notify("Deleted config " .. name, 4, true)
     end
 })
-UI.SettingsConfig:AddToggle({
-    Name = "Autosave active slot",
-    Default = false,
-    Save = false,
-    Flag = "ConfigAutosave",
-    Callback = function(Value)
-        orionAutosaveOn = Value == true
-        if Value then
-            orionSnapshotActive()
-            notify("Autosave on" .. (orionActiveSlot and (" for " .. orionActiveSlot) or ""), 3, true)
-        else
-            notify("Autosave off", 3, true)
-        end
-    end
-})
 local ConfigAutoloadLabel = UI.SettingsConfig:AddLabel("Autoload: none")
 pcall(function()
     if orionSlotsUsable() and isfile("ShijinHub/autoload.txt") then
@@ -4886,23 +4890,6 @@ UI.SettingsConfig:AddButton({
         notify("Autoload cleared", 4, true)
     end
 })
-
--- Smart autosave: every 5s, persist the active slot only if flags changed.
-task.spawn(function()
-    while not ShijinUnloaded do
-        task.wait(5)
-        if orionAutosaveOn and orionActiveSlot and not ShijinUnloaded then
-            pcall(function()
-                local json = OrionSlotService:JSONEncode(orionPackFlags())
-                if json ~= orionLastSlotJson then
-                    if orionSaveSlot(orionActiveSlot) then
-                        orionLastSlotJson = json
-                    end
-                end
-            end)
-        end
-    end
-end)
 
 local function shijinFullCleanup()
     if ShijinUnloaded then return end
@@ -4970,9 +4957,9 @@ local function shijinFullCleanup()
     pcall(function() restoreJumpBoost() end)
     pcall(function() if JumpBoostConn then JumpBoostConn:Disconnect() JumpBoostConn = nil end end)
     JumpBoostLastApply = 0
-    AutoReceiveEnabled = false
-    pcall(function() if AutoReceiveConn then AutoReceiveConn:Disconnect() AutoReceiveConn = nil end end)
-    pcall(function() if ballScanConn then ballScanConn:Disconnect() ballScanConn = nil end end)
+    -- Full power-down: run the real disable path so listeners, caches and
+    -- the step-in watcher all release instead of leaking past unload.
+    pcall(setAutoReceiveEnabled, false)
     pcall(function() if charResetConn then charResetConn:Disconnect() charResetConn = nil end end)
     AutoCorner.enabled = false
     pcall(function() TSHBarLock.setEnabled(false) end)
