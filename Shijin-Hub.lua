@@ -111,7 +111,7 @@ function VX.list()
     if not VX.on then
         for _, v in ipairs(Workspace:GetChildren()) do
             local n = v.Name
-            if type(n) == "string" and n:find("BALL", 1, true) then
+            if type(n) == "string" and n:upper():find("BALL", 1, true) then
                 VX.buf[#VX.buf + 1] = v
             end
         end
@@ -3421,7 +3421,7 @@ local AutoReceiveInfoLabel = nil
 local AutoReceiveConn = nil
 local arTick
 
-local ballCache, ballCacheT, ballScanConn = {}, -10, nil
+local ballCache, ballCacheT, ballScanConn, deepScanT = {}, -10, nil, -10
 FeatureConfig.autoReceive = { net = nil, netT = -10, velocityConns = {}, reactionQueued = false }
 function FeatureConfig.autoReceive.isFrontRow(root)
     if not root then return false end
@@ -3485,8 +3485,8 @@ local function scanBalls(root)
         ballCacheT = nowS
         local found = VX.scanFound
         VX.clear(found)
-        for _, v in ipairs(VX.list()) do
-            if v:IsA("Model") and v.Name:find("CLIENT_BALL", 1, true) then
+        local function consider(v)
+            if ((v:IsA("Model") or v:IsA("BasePart")) and type(v.Name) == "string" and v.Name:upper():find("BALL", 1, true)) then
                 found[v] = true
                 local entry = ballCache[v]
                 if not entry or not entry.p or not entry.p.Parent then
@@ -3494,7 +3494,7 @@ local function scanBalls(root)
                         safeDisconnect(entry.vc)
                         if entry.p then FeatureConfig.autoReceive.velocityConns[entry.p] = nil end
                     end
-                    local part = v:FindFirstChildWhichIsA("BasePart")
+                    local part = (v:IsA("BasePart") and v) or v:FindFirstChildWhichIsA("BasePart")
                     if part and part.Name == "ExtendedHitbox" then
                         part = nil
                     end
@@ -3533,6 +3533,13 @@ local function scanBalls(root)
                     end
                 end
             end
+        end
+        for _, sv in ipairs(VX.list()) do consider(sv) end
+        -- Deep discovery (throttled): balls nested in folders/models, any
+        -- casing. The top-level scan above misses those entirely.
+        if not next(found) and nowS - (deepScanT or -10) > 0.5 then
+            deepScanT = nowS
+            for _, dv in ipairs(Workspace:GetDescendants()) do consider(dv) end
         end
         for m, stale in pairs(ballCache) do
             if not found[m] then
