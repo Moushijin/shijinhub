@@ -3515,7 +3515,7 @@ local function scanBalls(root)
                                 -- A player hit updates ball velocity before the next ordinary scan.
                                 -- Queue one immediate receive pass instead of waiting for the next frame.
                                 ballCacheT = -10
-                                entry.spd = math.max(entry.spd or 0, part.AssemblyLinearVelocity.Magnitude)
+                                entry.spd = part.AssemblyLinearVelocity.Magnitude
                                 local state = FeatureConfig.autoReceive
                                 if AutoReceiveEnabled and not state.reactionQueued then
                                     state.reactionQueued = true
@@ -3635,7 +3635,7 @@ arTick = function()
                 or math.clamp(30 + speed * 0.27, 28, 72))
         local last = arFiredAt[entry.m]
         local cooldown = fastIncoming
-            and math.clamp(0.04 - math.clamp(speed / 300, 0, 1) * 0.025, 0.015, 0.04)
+            and math.clamp(0.04 - math.clamp(speed / 300, 0, 1) * 0.025, 0.01, 0.03)
             or (frontRow
                 and math.clamp(0.08 - math.clamp(speed / 250, 0, 1) * 0.04 + (entry.d / range) * 0.03, 0.03, 0.10)
                 or math.clamp(0.14 - math.clamp(speed / 220, 0, 1) * 0.08 + (entry.d / range) * 0.05, 0.04, 0.17))
