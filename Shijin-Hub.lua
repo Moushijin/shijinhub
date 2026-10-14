@@ -3811,7 +3811,9 @@ UI.Tabs = {
     Settings = Window:MakeTab({ Name = "Settings", Icon = "settings", PremiumOnly = false }),
 }
 
-UI.MainFeatures = UI.Tabs.Main:AddSection({ Name = "Features" })
+UI.ReceiveFeatures = UI.Tabs.Main:AddSection({ Name = "Receive" })
+UI.ServeFeatures = UI.Tabs.Main:AddSection({ Name = "Serve" })
+UI.MoveFeatures = UI.Tabs.Main:AddSection({ Name = "Movement" })
 UI.MainVisuals = UI.Tabs.Visuals:AddSection({ Name = "Visual Features" })
 UI.RageFeatures = UI.Tabs.Rage:AddSection({ Name = "Ball Control" })
 UI.RageTech = UI.Tabs.Rage:AddSection({ Name = "Spike Tech" })
@@ -4017,7 +4019,7 @@ UI.RestoreDataFeatures:AddButton({
     end
 })
 
-UI.MainFeatures:AddToggle({
+UI.ReceiveFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Auto Receive",
     Default = false,
@@ -4028,7 +4030,7 @@ UI.MainFeatures:AddToggle({
         notify(Value and "Auto Receive ON" or "Auto Receive OFF", 4)
     end
 })
-UI.MainFeatures:AddBind({
+UI.ReceiveFeatures:AddBind({
     Name = "Auto Receive Key",
     Default = Enum.KeyCode.G,
     Hold = false,
@@ -4039,11 +4041,11 @@ UI.MainFeatures:AddBind({
         if t then t:Set(not t.Value) end
     end
 })
-AutoReceiveStatusLabel = UI.MainFeatures:AddLabel("State: OFF")
-AutoReceiveInfoLabel = UI.MainFeatures:AddLabel("Ball: --st  |  Received: 0")
+AutoReceiveStatusLabel = UI.ReceiveFeatures:AddLabel("State: OFF")
+AutoReceiveInfoLabel = UI.ReceiveFeatures:AddLabel("Ball: --st  |  Received: 0")
 do
-    KeyDetectorSetLabel = UI.MainFeatures:AddLabel("Set Key: [Q]")
-    local SetBind = UI.MainFeatures:AddBind({
+    KeyDetectorSetLabel = UI.ReceiveFeatures:AddLabel("Set Key: [Q]")
+    local SetBind = UI.ReceiveFeatures:AddBind({
         Color = Color3.fromRGB(244, 63, 94),
         Name = "Set Key",
         Default = Enum.KeyCode.Q,
@@ -4069,7 +4071,7 @@ do
         end)
     end
 end
-UI.MainFeatures:AddSlider({
+UI.ReceiveFeatures:AddSlider({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Ignore Ball Speeds Under",
     Default = AutoReceiveMinSpeed,
@@ -4083,7 +4085,7 @@ UI.MainFeatures:AddSlider({
         AutoReceiveMinSpeed = Value
     end
 })
-UI.MainFeatures:AddButton({
+UI.ReceiveFeatures:AddButton({
     Name = "Reset Receive Session",
     Callback = function()
         AutoReceiveCount = 0
@@ -4092,7 +4094,7 @@ UI.MainFeatures:AddButton({
         notify("Auto Receive session reset", 3)
     end
 })
-UI.MainFeatures:AddToggle({
+UI.ServeFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Always Max Power Serve",
     Default = AutoStrongServeEveryServeEnabled,
@@ -4104,11 +4106,7 @@ UI.MainFeatures:AddToggle({
     end
 })
 
-UI.MainFeatures:AddLabel("")
-
-UI.MainFeatures:AddLabel("")
-
-UI.MainFeatures:AddToggle({
+UI.ServeFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "TSH Bar Lock",
     Default = false,
@@ -4119,7 +4117,7 @@ UI.MainFeatures:AddToggle({
         notify(Value and "TSH Bar Lock ON" or "TSH Bar Lock OFF", 5)
     end
 })
-UI.MainFeatures:AddBind({
+UI.ServeFeatures:AddBind({
     Name = "TSH Bar Lock Key",
     Default = Enum.KeyCode.T,
     Hold = false,
@@ -4130,7 +4128,7 @@ UI.MainFeatures:AddBind({
         if t then t:Set(not t.Value) end
     end
 })
-UI.MainFeatures:AddToggle({
+UI.ServeFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Require Run-Up Before Full Bar",
     Default = TSHBarLock.requireRunup,
@@ -4141,7 +4139,7 @@ UI.MainFeatures:AddToggle({
         TSHBarLock.updateRunupGate(TSHBarLock.rawCharge)
     end
 })
-UI.MainFeatures:AddSlider({
+UI.ServeFeatures:AddSlider({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Minimum Run-Up",
     Default = math.floor(TSHBarLock.minimumRunup * 100),
@@ -4157,9 +4155,7 @@ UI.MainFeatures:AddSlider({
     end
 })
 
-UI.MainFeatures:AddLabel("")
-
-UI.MainFeatures:AddToggle({
+UI.MoveFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Auto Shiftlock",
     Default = CameraJumpEnabled,
@@ -4170,7 +4166,7 @@ UI.MainFeatures:AddToggle({
         notify(Value and "Auto Shiftlock Enabled" or "Auto Shiftlock Disabled")
     end
 })
-UI.MainFeatures:AddSlider({
+UI.MoveFeatures:AddSlider({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Shiftlock Turn Time",
     Default = CameraJumpTurnTime,
@@ -4182,7 +4178,7 @@ UI.MainFeatures:AddSlider({
     Flag = "CameraJumpTurnTime",
     Callback = function(Value) CameraJumpTurnTime = Value end
 })
-UI.MainFeatures:AddSlider({
+UI.MoveFeatures:AddSlider({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Max Shiftlock Turn",
     Default = CameraJumpMaxTurn,
@@ -4194,7 +4190,7 @@ UI.MainFeatures:AddSlider({
     Flag = "CameraJumpMaxTurn",
     Callback = function(Value) CameraJumpMaxTurn = Value end
 })
-UI.MainFeatures:AddSlider({
+UI.MoveFeatures:AddSlider({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Auto Shiftlock Cooldown",
     Default = FeatureConfig.cameraJumpCooldown,
@@ -4205,107 +4201,6 @@ UI.MainFeatures:AddSlider({
     Save = true,
     Flag = "CameraJumpCooldown",
     Callback = function(Value) FeatureConfig.cameraJumpCooldown = Value end
-})
-
-UI.MainVisuals:AddToggle({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Ghost Mode",
-    Default = false,
-    Save = true,
-    Flag = "StreamerModeToggle",
-    Callback = function(Value)
-        StreamerModeEnabled = Value
-        if Value then applyStreamerMode() startStreamerLoop() notify("Ghost Mode ON", 4)
-        else disableStreamerMode() notify("Ghost Mode OFF", 3) end
-    end
-})
-UI.MainVisuals:AddToggle({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Hide Local Name",
-    Default = FeatureConfig.streamerHideSelf,
-    Save = true,
-    Flag = "StreamerHideSelf",
-    Callback = function(Value)
-        FeatureConfig.streamerHideSelf = Value
-        if StreamerModeEnabled then
-            if Value then hidePlayerName(LocalPlayer) else restorePlayerName(LocalPlayer) end
-        end
-    end
-})
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Ghost Refresh Rate",
-    Default = FeatureConfig.streamerRefreshRate,
-    Min = 0.5,
-    Max = 10,
-    Increment = 0.1,
-    ValueName = "s",
-    Save = true,
-    Flag = "StreamerRefresh",
-    Callback = function(Value) FeatureConfig.streamerRefreshRate = Value end
-})
-
-UI.MainVisuals:AddToggle({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Jump Tracker",
-    Default = JumpESPEnabled,
-    Save = true,
-    Flag = "JumpESPToggle",
-    Callback = function(Value)
-        JumpESPEnabled = Value
-        syncFrameLink()
-        if JumpESPEnabled then notify("Jump Tracker Enabled")
-        else clearAllJumpESP() notify("Jump Tracker Disabled") end
-    end
-})
-UI.MainVisuals:AddColorpicker({
-    Name = "Jump Tracker Color",
-    Default = JumpESPColor,
-    Save = true,
-    Flag = "JumpESPColor",
-    Callback = function(Value) JumpESPColor = Value end
-})
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Jump Tracker Fill Transparency",
-    Default = FeatureConfig.jumpEspFillTransparency,
-    Min = 0,
-    Max = 1,
-    Increment = 0.01,
-    Save = true,
-    Flag = "JumpESPFill",
-    Callback = function(Value) FeatureConfig.jumpEspFillTransparency = Value end
-})
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Jump Tracker Outline Transparency",
-    Default = FeatureConfig.jumpEspOutlineTransparency,
-    Min = 0,
-    Max = 1,
-    Increment = 0.01,
-    Save = true,
-    Flag = "JumpESPOutline",
-    Callback = function(Value) FeatureConfig.jumpEspOutlineTransparency = Value end
-})
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Jump Tracker Range",
-    Default = FeatureConfig.jumpEspMaxDistance,
-    Min = 50,
-    Max = 1000,
-    Increment = 1,
-    ValueName = "studs",
-    Save = true,
-    Flag = "JumpESPRange",
-    Callback = function(Value) FeatureConfig.jumpEspMaxDistance = Value end
-})
-UI.MainVisuals:AddToggle({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Jump Tracker Through Walls",
-    Default = FeatureConfig.jumpEspAlwaysOnTop,
-    Save = true,
-    Flag = "JumpESPDepth",
-    Callback = function(Value) FeatureConfig.jumpEspAlwaysOnTop = Value end
 })
 
 UI.MainVisuals:AddToggle({
@@ -4498,6 +4393,106 @@ UI.MainVisuals:AddSlider({
     Save = true,
     Flag = "BallESPMaxTime",
     Callback = function(Value) BALL_ESP_MAX_T = Value end
+})
+UI.MainVisuals:AddToggle({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Ghost Mode",
+    Default = false,
+    Save = true,
+    Flag = "StreamerModeToggle",
+    Callback = function(Value)
+        StreamerModeEnabled = Value
+        if Value then applyStreamerMode() startStreamerLoop() notify("Ghost Mode ON", 4)
+        else disableStreamerMode() notify("Ghost Mode OFF", 3) end
+    end
+})
+UI.MainVisuals:AddToggle({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Hide Local Name",
+    Default = FeatureConfig.streamerHideSelf,
+    Save = true,
+    Flag = "StreamerHideSelf",
+    Callback = function(Value)
+        FeatureConfig.streamerHideSelf = Value
+        if StreamerModeEnabled then
+            if Value then hidePlayerName(LocalPlayer) else restorePlayerName(LocalPlayer) end
+        end
+    end
+})
+UI.MainVisuals:AddSlider({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Ghost Refresh Rate",
+    Default = FeatureConfig.streamerRefreshRate,
+    Min = 0.5,
+    Max = 10,
+    Increment = 0.1,
+    ValueName = "s",
+    Save = true,
+    Flag = "StreamerRefresh",
+    Callback = function(Value) FeatureConfig.streamerRefreshRate = Value end
+})
+
+UI.MainVisuals:AddToggle({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Jump Tracker",
+    Default = JumpESPEnabled,
+    Save = true,
+    Flag = "JumpESPToggle",
+    Callback = function(Value)
+        JumpESPEnabled = Value
+        syncFrameLink()
+        if JumpESPEnabled then notify("Jump Tracker Enabled")
+        else clearAllJumpESP() notify("Jump Tracker Disabled") end
+    end
+})
+UI.MainVisuals:AddColorpicker({
+    Name = "Jump Tracker Color",
+    Default = JumpESPColor,
+    Save = true,
+    Flag = "JumpESPColor",
+    Callback = function(Value) JumpESPColor = Value end
+})
+UI.MainVisuals:AddSlider({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Jump Tracker Fill Transparency",
+    Default = FeatureConfig.jumpEspFillTransparency,
+    Min = 0,
+    Max = 1,
+    Increment = 0.01,
+    Save = true,
+    Flag = "JumpESPFill",
+    Callback = function(Value) FeatureConfig.jumpEspFillTransparency = Value end
+})
+UI.MainVisuals:AddSlider({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Jump Tracker Outline Transparency",
+    Default = FeatureConfig.jumpEspOutlineTransparency,
+    Min = 0,
+    Max = 1,
+    Increment = 0.01,
+    Save = true,
+    Flag = "JumpESPOutline",
+    Callback = function(Value) FeatureConfig.jumpEspOutlineTransparency = Value end
+})
+UI.MainVisuals:AddSlider({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Jump Tracker Range",
+    Default = FeatureConfig.jumpEspMaxDistance,
+    Min = 50,
+    Max = 1000,
+    Increment = 1,
+    ValueName = "studs",
+    Save = true,
+    Flag = "JumpESPRange",
+    Callback = function(Value) FeatureConfig.jumpEspMaxDistance = Value end
+})
+UI.MainVisuals:AddToggle({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Jump Tracker Through Walls",
+    Default = FeatureConfig.jumpEspAlwaysOnTop,
+    Save = true,
+    Flag = "JumpESPDepth",
+    Callback = function(Value) FeatureConfig.jumpEspAlwaysOnTop = Value end
 })
 
 UI.SettingsPerformance:AddParagraph("Performance Mode", "Reduces render effects client-side. Original values are restored when disabled.")
