@@ -3634,14 +3634,16 @@ local function diveTick(balls, rootPart, humanoid)
         if part and part.Parent then
             local vel = part.AssemblyLinearVelocity
             local speed = math.max(entry.spd or 0, vel.Magnitude)
-            if speed >= AutoReceiveMinSpeed then
+            if speed >= 5 then
                 local toPlayer = rootPart.Position - part.Position
                 local rel = vel - rootPart.AssemblyLinearVelocity
                 local closing = toPlayer.Magnitude > 0.1 and rel:Dot(toPlayer.Unit) or 0
                 if closing > -5 then
                     local rrange = entry.range or 60
                     local pd = entry.predD or (part.Position - rootPart.Position).Magnitude
-                    if pd > rrange then
+                    -- Dive territory: outside receive range, OR so slow that
+                    -- receive will never take it (closes the slow-ball dead zone).
+                    if pd > rrange or speed < AutoReceiveMinSpeed then
                         local t = 0.05
                         while t <= 1.1 do
                             local q = part.Position + vel * t
