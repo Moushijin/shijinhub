@@ -3719,20 +3719,32 @@ arTick = function()
         -- ball costs little control and a fast ball gets the full run.
         local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
         -- Step-in through the humanoid itself: real WalkSpeed (style speed),
-        -- smooth and server-friendly. Yields to your own keys by design.
+        -- smooth and server-friendly. Skipped when already on the ball, and
+        -- cancelled the instant you touch your own keys (no stale drift).
         if humanoid.MoveDirection.Magnitude < 0.1 then
             local dest = target.predPos or target.p.Position
-            pcall(function()
-                humanoid:MoveTo(Vector3.new(dest.X, rootPart.Position.Y, dest.Z))
-            end)
-            task.delay(stepWindow, function()
-                pcall(function()
-                    if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
-                        local r = char and char:FindFirstChild("HumanoidRootPart")
-                        if r then humanoid:MoveTo(r.Position) end
-                    end
+            dest = Vector3.new(dest.X, rootPart.Position.Y, dest.Z)
+            local gap = (dest - rootPart.Position)
+            gap = Vector3.new(gap.X, 0, gap.Z).Magnitude
+            if gap > 4 then
+                pcall(function() humanoid:MoveTo(dest) end)
+                local t0 = os.clock()
+                local watch
+                watch = RunService.Heartbeat:Connect(function()
+                    local stop = (not AutoReceiveEnabled) or ShijinUnloaded
+                        or (os.clock() - t0) > stepWindow
+                        or (not humanoid.Parent) or humanoid.Health <= 0
+                        or humanoid.MoveDirection.Magnitude > 0.1
+                    if not stop then return end
+                    pcall(function() watch:Disconnect() end)
+                    pcall(function()
+                        if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
+                            local r = char and char:FindFirstChild("HumanoidRootPart")
+                            if r then humanoid:MoveTo(r.Position) end
+                        end
+                    end)
                 end)
-            end)
+            end
         end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
