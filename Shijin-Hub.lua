@@ -3731,9 +3731,9 @@ arTick = function()
         -- ball costs little control and a fast ball gets the full run.
         local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
         -- Step-in through the humanoid itself: real WalkSpeed (style speed),
-        -- smooth and server-friendly. Skipped when already on the ball, and
-        -- cancelled the instant you touch your own keys (no stale drift).
-        if humanoid.MoveDirection.Magnitude < 0.1 then
+        -- smooth and server-friendly. Skipped when already on the ball, while
+        -- you steer, or while the hub's own Speed feature is driving.
+        if humanoid.MoveDirection.Magnitude < 0.1 and not (SpeedEnabled and SpeedValue > 0) then
             local dest = target.predPos or target.p.Position
             dest = Vector3.new(dest.X, rootPart.Position.Y, dest.Z)
             local gap = (dest - rootPart.Position)
