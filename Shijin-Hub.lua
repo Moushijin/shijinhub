@@ -3718,28 +3718,21 @@ arTick = function()
         -- Step-in window follows the press: hold + margin, bounded so a slow
         -- ball costs little control and a fast ball gets the full run.
         local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
-        do
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp and hrp.Parent and humanoid.Parent then
-                local dest = target.predPos or target.p.Position
-                dest = Vector3.new(dest.X, hrp.Position.Y, dest.Z)
-                local t0 = os.clock()
-                local stepConn
-                stepConn = RunService.Heartbeat:Connect(function(dt)
-                    local go = AutoReceiveEnabled and not ShijinUnloaded
-                        and (os.clock() - t0) <= stepWindow
-                        and humanoid.Parent and hrp.Parent and humanoid.Health > 0
-                    if not go then
-                        pcall(function() stepConn:Disconnect() end)
-                        return
+        -- Step-in through the humanoid itself: real WalkSpeed (style speed),
+        -- smooth and server-friendly. Yields to your own keys by design.
+        if humanoid.MoveDirection.Magnitude < 0.1 then
+            local dest = target.predPos or target.p.Position
+            pcall(function()
+                humanoid:MoveTo(Vector3.new(dest.X, rootPart.Position.Y, dest.Z))
+            end)
+            task.delay(stepWindow, function()
+                pcall(function()
+                    if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
+                        local r = char and char:FindFirstChild("HumanoidRootPart")
+                        if r then humanoid:MoveTo(r.Position) end
                     end
-                    local to = dest - hrp.Position
-                    to = Vector3.new(to.X, 0, to.Z)
-                    if to.Magnitude < 0.5 then return end
-                    local step = math.min(to.Magnitude, (humanoid.WalkSpeed or 16) * math.min(dt or 0.033, 0.1))
-                    hrp.CFrame = hrp.CFrame + to.Unit * step
                 end)
-            end
+            end)
         end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
