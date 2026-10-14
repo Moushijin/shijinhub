@@ -3825,7 +3825,7 @@ UI.RageFeatures:AddToggle({
     end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Hitbox Size",
     Default = 10,
     Min = 0,
@@ -3844,7 +3844,7 @@ UI.RageFeatures:AddColorpicker({
     Callback = function(Value) HitboxColor = Value end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Hitbox Transparency",
     Default = 80,
     Min = 40,
@@ -3856,7 +3856,7 @@ UI.RageFeatures:AddSlider({
     Callback = function(Value) HitboxTransparency = Value / 100 end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Hitbox Range",
     Default = FeatureConfig.hitboxMaxDistance,
     Min = 20,
@@ -3868,7 +3868,7 @@ UI.RageFeatures:AddSlider({
     Callback = function(Value) FeatureConfig.hitboxMaxDistance = Value end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Hitbox Refresh",
     Default = FeatureConfig.hitboxUpdateRate,
     Min = 0.03,
@@ -3912,7 +3912,7 @@ UI.RageTech:AddBind({
     end
 })
 UI.RageTech:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Counter Range",
     Default = FeatureConfig.autoSpike.range,
     Min = 12,
@@ -3932,7 +3932,7 @@ UI.RageTech:AddBind({
     Callback = function() end
 })
 UI.RageTech:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Minimum Incoming Speed",
     Default = FeatureConfig.autoSpike.minIncomingSpeed,
     Min = 1,
@@ -4032,7 +4032,7 @@ AutoReceiveInfoLabel = UI.ReceiveFeatures:AddLabel("Ball: --st  |  Received: 0")
 do
     KeyDetectorSetLabel = UI.ReceiveFeatures:AddLabel("Set Key: [Q]")
     local SetBind = UI.ReceiveFeatures:AddBind({
-        Color = Color3.fromRGB(244, 63, 94),
+        Color = Color3.fromRGB(167, 139, 250),
         Name = "Receive Key",
         Default = Enum.KeyCode.Q,
         Hold = false,
@@ -4058,7 +4058,7 @@ do
     end
 end
 UI.ReceiveFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ignore Ball Speeds Under",
     Default = AutoReceiveMinSpeed,
     Min = 0,
@@ -4126,7 +4126,7 @@ UI.ServeFeatures:AddToggle({
     end
 })
 UI.ServeFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Minimum Run-Up",
     Default = math.floor(TSHBarLock.minimumRunup * 100),
     Min = 0,
@@ -4167,7 +4167,7 @@ UI.MainVisuals:AddToggle({
     end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Length",
     Default = PredictAimLength,
     Min = 0,
@@ -4186,7 +4186,7 @@ UI.MainVisuals:AddColorpicker({
     Callback = function(Value) PredictAimColor = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Thickness",
     Default = FeatureConfig.predictAimThickness,
     Min = 0.05,
@@ -4197,7 +4197,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.predictAimThickness = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Transparency",
     Default = FeatureConfig.predictAimTransparency,
     Min = 0,
@@ -4208,7 +4208,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.predictAimTransparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Range",
     Default = FeatureConfig.predictAimMaxDistance,
     Min = 50,
@@ -4256,7 +4256,7 @@ UI.MainVisuals:AddColorpicker({
     Callback = function(Value) BallESP.landColor = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Path Transparency",
     Default = 0.55,
     Min = 0,
@@ -4267,7 +4267,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.transparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Landing Circle Size",
     Default = 7,
     Min = 2,
@@ -4279,7 +4279,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.circleSize = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Gravity Tune",
     Default = 1,
     Min = 0.5,
@@ -4309,7 +4309,7 @@ UI.MainVisuals:AddToggle({
     end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ball Minimum Speed",
     Default = BallESP.minSpeed,
     Min = 0,
@@ -4321,7 +4321,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.minSpeed = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ball ESP Range",
     Default = BallESP.maxDistance,
     Min = 50,
@@ -4333,7 +4333,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.maxDistance = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Trajectory Maximum Time",
     Default = BALL_ESP_MAX_T,
     Min = 1,
@@ -4370,7 +4370,7 @@ UI.MainVisuals:AddToggle({
     end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ghost Refresh Rate",
     Default = FeatureConfig.streamerRefreshRate,
     Min = 0.5,
@@ -4403,7 +4403,7 @@ UI.MainVisuals:AddColorpicker({
     Callback = function(Value) JumpESPColor = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Jump Tracker Fill Transparency",
     Default = FeatureConfig.jumpEspFillTransparency,
     Min = 0,
@@ -4414,7 +4414,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.jumpEspFillTransparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Jump Tracker Outline Transparency",
     Default = FeatureConfig.jumpEspOutlineTransparency,
     Min = 0,
@@ -4425,7 +4425,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.jumpEspOutlineTransparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Jump Tracker Range",
     Default = FeatureConfig.jumpEspMaxDistance,
     Min = 50,
@@ -4501,7 +4501,7 @@ UI.SettingsProtection:AddToggle({
     Callback = function(Value) FeatureConfig.notifications = Value end
 })
 UI.SettingsProtection:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Notification Duration",
     Default = FeatureConfig.notificationLifetime,
     Min = 1,
