@@ -4751,6 +4751,17 @@ UI.SettingsConfig:AddButton({
     end
 })
 UI.SettingsConfig:AddButton({
+    Name = "Save slot",
+    Callback = function()
+        local name = orionCleanSlotName(ConfigListSelected or orionActiveSlot)
+        if name == "" then return notify("Select a config first", 4) end
+        if orionSaveSlot(name) then
+            orionSetActive(name)
+            notify("Saved " .. name, 3)
+        else notify("Could not save " .. name, 4) end
+    end
+})
+UI.SettingsConfig:AddButton({
     Name = "Load config",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
@@ -4771,17 +4782,6 @@ UI.SettingsConfig:AddButton({
         ConfigListSelected = nil
         if orionActiveSlot == name then orionSetActive(nil) end
         notify("Deleted config " .. name, 4)
-    end
-})
-UI.SettingsConfig:AddButton({
-    Name = "Save slot",
-    Callback = function()
-        local name = orionCleanSlotName(ConfigListSelected or orionActiveSlot)
-        if name == "" then return notify("Select a config first", 4) end
-        if orionSaveSlot(name) then
-            orionSetActive(name)
-            notify("Saved " .. name, 3)
-        else notify("Could not save " .. name, 4) end
     end
 })
 UI.SettingsConfig:AddToggle({
