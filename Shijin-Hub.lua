@@ -3425,9 +3425,9 @@ hubConn(Players.PlayerRemoving, function(player)
 end)
 
 local AutoReceiveEnabled = false
-local AutoDirectRemote = false
+local AutoRespectTeam = true
 local AutoReceiveMode = "Set"
-local AutoReceiveMinSpeed = 25
+local AutoReceiveMinSpeed = 15
 local AutoReceiveCount = 0
 local AutoReceiveStatusLabel = nil
 local AutoReceiveInfoLabel = nil
@@ -3452,6 +3452,8 @@ function FeatureConfig.autoReceive.isFrontRow(root)
 end
 local arFiredAt = {}
 local arLastFire = 0
+local arNeedReset = false
+local arLastFireVel = nil
 local arPingPeak = 0.05
 
 local psState, psStateT, psInfoT = "", 0, 0
@@ -3528,7 +3530,37 @@ local function scanBalls(root)
                                 -- A player hit updates ball velocity before the next ordinary scan.
                                 -- Queue one immediate receive pass instead of waiting for the next frame.
                                 ballCacheT = -10
-                                entry.spd = part.AssemblyLinearVelocity.Magnitude
+                                local newSpd = part.AssemblyLinearVelocity.Magnitude
+                                local spdJump = math.abs(newSpd - (entry.spd or newSpd))
+                                entry.spd = newSpd
+                                -- Teammate touch claim: a real hit (big velocity
+                                -- jump) next to a teammate marks their ball briefly.
+                                -- Enemy touches clear the claim instead.
+                                if AutoRespectTeam and spdJump > 25 then
+                                    pcall(function()
+                                        local bp = part.Position
+                                        local myTeam = getPlayerTeam(LocalPlayer)
+                                        local nearD, nearPl = 30, nil
+                                        for _, pl in ipairs(Players:GetPlayers()) do
+                                            if pl ~= LocalPlayer then
+                                                local ch = pl.Character
+                                                local rt = ch and ch:FindFirstChild("HumanoidRootPart")
+                                                if rt then
+                                                    local d = (rt.Position - bp).Magnitude
+                                                    if d < nearD then nearD, nearPl = d, pl end
+                                                end
+                                            end
+                                        end
+                                        if nearPl and myTeam then
+                                            local bt = getPlayerTeam(nearPl)
+                                            if bt and bt == myTeam then
+                                                entry.claimT = os.clock()
+                                            else
+                                                entry.claimT = nil
+                                            end
+                                        end
+                                    end)
+                                end
                                 local state = FeatureConfig.autoReceive
                                 if AutoReceiveEnabled and not state.reactionQueued then
                                     state.reactionQueued = true
@@ -3588,26 +3620,6 @@ local function scanBalls(root)
     return list
 end
 
-local function fireRemoteReceive(move)
-    -- Direct Knit call: BallService.RF.Interact, same shape the game itself
-    -- uses for Spike (Move + LookVector + Direction). Returns true only on a
-    -- clean server round-trip; anything else falls back to key simulation.
-    if ShijinUnloaded then return false end
-    local ok = pcall(function()
-        local services = ReplicatedStorage.Packages._Index["sleitnick_knit@1.7.0"].knit.Services
-        local bs = services and services:FindFirstChild("BallService")
-        local rf = bs and bs:FindFirstChild("RF")
-        local remote = rf and rf:FindFirstChild("Interact")
-        assert(remote and remote:IsA("RemoteFunction"), "no interact remote")
-        local dir = Vector3.new(0, 0, -1)
-        local c = LocalPlayer.Character
-        local rp = c and c:FindFirstChild("HumanoidRootPart")
-        if rp then dir = rp.CFrame.LookVector end
-        remote:InvokeServer({ Move = move, LookVector = dir, Direction = dir })
-    end)
-    return ok
-end
-
 arTick = function()
     if not AutoReceiveEnabled or ShijinUnloaded then return end
     local now = os.clock()
@@ -3645,7 +3657,7 @@ arTick = function()
     end
     local target, targetDistance, targetRange, targetScore, targetFast = nil, math.huge, 0, math.huge, false
     local targetEta, targetSpeed = math.huge, 0
-    local slowDistance, farDistance, gated = math.huge, math.huge, false
+    local slowDistance, farDistance, theirsDistance, gated = math.huge, math.huge, math.huge, false
     -- Trajectory horizon: how far ahead we forecast each ball (ping + margin).
     local arPredictT = math.min(arPingComp + 0.20, 0.50)
     local arGravity = 196.2
@@ -3657,9 +3669,27 @@ arTick = function()
         local relativeVelocity = velocity - rootPart.AssemblyLinearVelocity
         local closing = toPlayer.Magnitude > 0.1 and relativeVelocity:Dot(toPlayer.Unit) or 0
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
-        local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.5) or math.huge
+        -- Closest-approach ETA: sample the gravity-bent trajectory and take
+        -- the time of nearest approach (cap 0.6s). Correct on arcs where the
+        -- old straight-line solve lied about fast-dipping balls.
+        local eta = math.huge
+        do
+            local bestD, bestT = math.huge, math.huge
+            local t = 0.05
+            while t <= 0.6 do
+                local q = entry.p.Position + velocity * t
+                q = Vector3.new(q.X, math.max(q.Y - 0.5 * arGravity * t * t, 0.3), q.Z)
+                local d = (q - rootPart.Position).Magnitude
+                if d < bestD then bestD, bestT = d, t end
+                t = t + 0.05
+            end
+            eta = bestT
+        end
         local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.40
-        if closing < -15 then
+        local isTheirs = AutoRespectTeam and entry.claimT and nowS - entry.claimT < 1.0 and closing < 0
+        if isTheirs then
+            if entry.d < theirsDistance then theirsDistance = entry.d end
+        elseif closing < -15 then
             if entry.d < farDistance then farDistance = entry.d end
         else
         -- Very fast tilted/dunk-style balls get an anticipatory response window.
@@ -3699,7 +3729,7 @@ arTick = function()
             if entry.d < farDistance then farDistance = entry.d end
         else
             local approachBonus = math.clamp(closing / math.max(speed, 1), -1, 1) * (fastIncoming and 0.34 or (frontRow and 0.20 or 0.08))
-            local timingBonus = fastIncoming and math.clamp((0.30 - eta) / 0.30, 0, 1) * 0.16 or 0
+            local timingBonus = fastIncoming and math.clamp((0.40 - eta) / 0.40, 0, 1) * 0.16 or 0
             local score = predD / range - approachBonus - timingBonus
             if score < targetScore or (score == targetScore and predD < targetDistance) then
                 target, targetDistance, targetRange, targetScore, targetFast = entry, predD, range, score, fastIncoming
@@ -3709,6 +3739,11 @@ arTick = function()
         end
         end
     end
+    local state = humanoid:GetState()
+    local airborne = state == Enum.HumanoidStateType.Jumping
+        or state == Enum.HumanoidStateType.Freefall
+        or humanoid.FloorMaterial == Enum.Material.Air
+        or math.abs(rootPart.AssemblyLinearVelocity.Y) > 3
     if not target then
         if slowDistance < math.huge then
             pushReceiveStatus("Waiting for ball speed", slowDistance)
@@ -3716,10 +3751,36 @@ arTick = function()
             pushReceiveStatus("Waiting for closer ball", farDistance)
         elseif gated then
             pushReceiveStatus("Cooldown...")
+        elseif theirsDistance < math.huge then
+            pushReceiveStatus("Teammate's ball", theirsDistance)
         else
             pushReceiveStatus("Seeking")
         end
         return
+    end
+    -- Vertical reach gate: never press at balls arriving over your head.
+    if targetEta ~= math.huge and targetEta < 1.0 then
+        local tv = target.p.AssemblyLinearVelocity
+        local ap = target.p.Position + tv * targetEta
+        ap = Vector3.new(ap.X, math.max(ap.Y - 0.5 * arGravity * targetEta * targetEta, 0.3), ap.Z)
+        if ap.Y > rootPart.Position.Y + (airborne and 18 or 12) then
+            pushReceiveStatus("Over head", targetDistance)
+            return
+        end
+    end
+    -- One press per approach, identity-free: after firing, hold everything
+    -- until the ball actually leaves. A genuine re-hit earns a fresh press.
+    if arNeedReset then
+        local tv = target.p.AssemblyLinearVelocity
+        local dvAll = arLastFireVel and (tv - arLastFireVel).Magnitude or math.huge
+        if targetDistance > 35 then
+            arNeedReset = false
+        elseif dvAll > 25 and (now - arLastFire) > 0.12 then
+            arNeedReset = false
+        else
+            pushReceiveStatus("Waiting...", targetDistance)
+            return
+        end
     end
     local globalGap = targetFast
         and math.clamp(0.01 + (targetDistance / targetRange) * 0.01, 0.01, 0.02)
@@ -3727,11 +3788,6 @@ arTick = function()
             and math.clamp(0.025 + (targetDistance / targetRange) * 0.015, 0.025, 0.04)
             or math.clamp(0.025 + (targetDistance / targetRange) * 0.02, 0.025, 0.045))
     if now - arLastFire < globalGap then return end
-    local state = humanoid:GetState()
-    local airborne = state == Enum.HumanoidStateType.Jumping
-        or state == Enum.HumanoidStateType.Freefall
-        or humanoid.FloorMaterial == Enum.Material.Air
-        or math.abs(rootPart.AssemblyLinearVelocity.Y) > 3
     local move
     if AutoReceiveMode == "Set" then
         move = "Set"
@@ -3749,16 +3805,17 @@ arTick = function()
     -- Fire while arrival is inside the forecast window; the hold is sized to
     -- still be down at contact, and short cooldowns keep coverage across it.
     if targetFast and targetEta > 0.40 then return end
-    -- Arrival gate: never spray presses at balls seconds away. Fire only when
-    -- the press will still be down at contact (hold + reaction margin), unless
-    -- the ball is already on top of us.
-    if targetEta ~= math.huge and targetEta > holdDuration + 0.15 and targetDistance > 12 then
+    -- Arrival gate: never spray presses at balls seconds away. Fire when the
+    -- press will still be down at contact, pricing in the input round trip
+    -- (replicated ball state lags ~ping/2, press takes ~ping/2 to land).
+    if targetEta ~= math.huge and targetEta > holdDuration + 0.10 + arPingComp * 0.75 and targetDistance > 12 then
         pushReceiveStatus("Tracking ball...", targetDistance)
         return
     end
     arLastFire = now
-    local usedRemote = AutoDirectRemote and fireRemoteReceive(move)
-    if (usedRemote or fireAutoReceive(move, holdDuration)) then
+    arNeedReset = true
+    arLastFireVel = target.p.AssemblyLinearVelocity
+    if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now, v = target.p.AssemblyLinearVelocity }
         -- Step-in window follows the press: hold + margin, bounded so a slow
         -- ball costs little control and a fast ball gets the full run.
@@ -3808,7 +3865,6 @@ arTick = function()
         end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
-        if usedRemote then suffix = suffix .. " [remote]" end
         pushReceiveStatus("Pressed " .. move .. suffix, targetDistance)
     else
         pushReceiveStatus("Input unavailable", targetDistance)
@@ -4140,13 +4196,13 @@ UI.ReceiveFeatures:AddBind({
 })
 UI.ReceiveFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
-    Name = "Direct Remote Fire",
-    Default = false,
+    Name = "Respect Teammate Touches",
+    Default = true,
     Save = true,
-    Flag = "AutoDirectRemoteToggle",
+    Flag = "AutoRespectTeamToggle",
     Callback = function(Value)
-        AutoDirectRemote = Value
-        notify(Value and "Direct Remote Fire ON" or "Direct Remote Fire OFF", 4)
+        AutoRespectTeam = Value
+        notify(Value and "Teammate Respect ON" or "Teammate Respect OFF", 4)
     end
 })
 AutoReceiveStatusLabel = UI.ReceiveFeatures:AddLabel("State: OFF")
