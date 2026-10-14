@@ -194,11 +194,10 @@ local FeatureConfig = {
     jumpEspFillTransparency = 0.5,
     jumpEspOutlineTransparency = 0,
     jumpEspMaxDistance = 250,
-    jumpEspAlwaysOnTop = true,
+    jumpEspAlwaysOnTop = false,
     predictAimThickness = 0.12,
     predictAimTransparency = 0.15,
     predictAimMaxDistance = 250,
-    cameraJumpCooldown = 0.5,
     jumpBoostRefreshRate = 0.12,
     streamerHideSelf = false,
     streamerRefreshRate = 3,
@@ -242,9 +241,7 @@ local AutoStrongServeEveryServeEnabled = false
 local ServeBoostPower = 1
 local StreamerModeEnabled = false
 local DirectionalHitEnabled = false
-local CameraJumpEnabled = true
-local CameraJumpTurnTime = 0.05
-local CameraJumpMaxTurn = 180
+local CameraJumpEnabled = false
 local JumpBoostEnabled = false
 local JumpBoostMult = 3
 local ballInteractRemote = nil
@@ -477,7 +474,7 @@ end
 local function pressDetectedMove(moveName, holdDuration)
     if ShijinUnloaded then return end
     local VIM = game:GetService("VirtualInputManager")
-    local hold = math.clamp(tonumber(holdDuration) or 0.03, 0.015, 0.09)
+    local hold = math.clamp(tonumber(holdDuration) or 0.03, 0.015, 0.15)
     local kc, it
     if moveName == "JumpSet" then kc, it = KeyDetectorJumpSetKeyCode, KeyDetectorJumpSetInputType
     else kc, it = KeyDetectorSetKeyCode, KeyDetectorSetInputType end
@@ -1018,101 +1015,60 @@ if LocalPlayer.Character then
 end
 hubConn(LocalPlayer.CharacterAdded, bindAutoCornerJump)
 
-local lastCameraJumpTurn = 0
 local cameraTurnToken = 0
 
-local function cameraJumpSnapshot()
-    local cam = Workspace.CurrentCamera
-    if not cam then return nil end
-    local look = cam.CFrame.LookVector
-    local flat = Vector3.new(look.X, 0, look.Z)
-    if flat.Magnitude < 0.05 then return nil end
-    return flat.Unit
-end
-
-local function cameraJumpTurn(rootPart, targetDir, duration)
-    if not rootPart or not rootPart.Parent then return end
-    cameraTurnToken = cameraTurnToken + 1
-    local token = cameraTurnToken
-    duration = math.clamp(tonumber(duration) or 0.18, 0.03, 0.6)
-    if typeof(targetDir) ~= "Vector3" or targetDir.Magnitude < 0.01 then return end
-    local targetYaw = math.atan2(-targetDir.X, -targetDir.Z)
-    local cur = rootPart.CFrame.LookVector
-    local startYaw = math.atan2(-cur.X, -cur.Z)
-    local diff = (targetYaw - startYaw + math.pi) % (math.pi * 2) - math.pi
-    local maxRad = math.rad(math.clamp(CameraJumpMaxTurn, 10, 180))
-    if diff > maxRad then diff = maxRad elseif diff < -maxRad then diff = -maxRad end
-    if math.abs(diff) < math.rad(2) then return end
-    local t0 = os.clock()
-    while true do
-        if token ~= cameraTurnToken then return end
-        if not CameraJumpEnabled or AutoCorner.enabled or ShijinUnloaded then return end
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if not char or not rootPart.Parent or not hum or hum.Health <= 0 then return end
-        local k = math.clamp((os.clock() - t0) / duration, 0, 1)
-        local e = k * k * (3 - 2 * k)
-        local yaw = startYaw + diff * e
-        pcall(function()
-            rootPart.CFrame = CFrame.new(rootPart.Position) * CFrame.Angles(0, yaw, 0)
-        end)
-        if k >= 1 then return end
-        RunService.Heartbeat:Wait()
-    end
-end
-
-local function tryCameraJump()
-    if not CameraJumpEnabled then return end
-    if AutoCorner.enabled then return end
-    if ShijinUnloaded then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local rootPart = char:FindFirstChild("HumanoidRootPart")
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not rootPart or not humanoid or humanoid.Health <= 0 then return end
-    if os.clock() - lastCameraJumpTurn < math.clamp(tonumber(FeatureConfig.cameraJumpCooldown) or 0.5, 0.1, 2) then return end
-    local dir = cameraJumpSnapshot()
-    if not dir then return end
-    lastCameraJumpTurn = os.clock()
-    task.spawn(cameraJumpTurn, rootPart, dir, CameraJumpTurnTime)
-end
-
+-- Auto Shiftlock: instant snap to camera direction on jump, held while airborne.
 local CameraJumpConns = {}
-local function bindCameraJumpV2(character)
+local function bindShiftlockSnap(character)
     for i = #CameraJumpConns, 1, -1 do
         safeDisconnect(CameraJumpConns[i])
         CameraJumpConns[i] = nil
     end
     local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
     if not humanoid then return end
+    local rootPart = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
+    if not rootPart then return end
+    local lockedLook = nil
+    local holdConn = nil
+    local function stopHold()
+        lockedLook = nil
+        if holdConn then safeDisconnect(holdConn) holdConn = nil end
+    end
     CameraJumpConns[#CameraJumpConns + 1] = humanoid.StateChanged:Connect(function(_, newState)
-        if newState == Enum.HumanoidStateType.Jumping then
-            task.defer(tryCameraJump)
-        end
-    end)
-    CameraJumpConns[#CameraJumpConns + 1] = humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
-        if humanoid.Jump then
-            task.defer(tryCameraJump)
+        if newState == Enum.HumanoidStateType.Freefall and CameraJumpEnabled and not ShijinUnloaded then
+            humanoid.AutoRotate = false
+            local cam = Workspace.CurrentCamera
+            if cam then
+                local look = cam.CFrame.LookVector
+                local flat = Vector3.new(look.X, 0, look.Z)
+                if flat.Magnitude > 0.01 then
+                    lockedLook = flat.Unit
+                    pcall(function()
+                        rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lockedLook)
+                    end)
+                end
+            end
+            if not holdConn then
+                holdConn = RunService.RenderStepped:Connect(function()
+                    if lockedLook then
+                        pcall(function()
+                            rootPart.CFrame = rootPart.CFrame:Lerp(CFrame.lookAt(rootPart.Position, rootPart.Position + lockedLook), 0.75)
+                        end)
+                    end
+                end)
+                CameraJumpConns[#CameraJumpConns + 1] = holdConn
+            end
+        else
+            humanoid.AutoRotate = true
+            stopHold()
         end
     end)
 end
 
 if LocalPlayer.Character then
-    task.spawn(bindCameraJumpV2, LocalPlayer.Character)
+    task.spawn(bindShiftlockSnap, LocalPlayer.Character)
 end
-hubConn(LocalPlayer.CharacterAdded, bindCameraJumpV2)
-
-hubConn(UserInputService.JumpRequest, function()
-    if not CameraJumpEnabled or AutoCorner.enabled then return end
-    task.delay(0.08, function()
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-        if hum:GetState() == Enum.HumanoidStateType.Jumping then
-            tryCameraJump()
-        end
-    end)
-end)
+hubConn(LocalPlayer.CharacterAdded, bindShiftlockSnap)
 
 end
 
@@ -2702,7 +2658,7 @@ BallESP = {
     visible     = false,
     renderConn  = nil,
     velFiltered = nil,
-    useBeams    = true,
+    useBeams    = false,
     minSpeed    = 2,
     maxDistance = 500,
     rig         = nil,
@@ -3483,6 +3439,7 @@ function FeatureConfig.autoReceive.isFrontRow(root)
 end
 local arFiredAt = {}
 local arLastFire = 0
+local arPingPeak = 0.05
 
 local psState, psStateT, psInfoT = "", 0, 0
 local psStateTxt, psInfoTxt = nil, nil
@@ -3630,13 +3587,29 @@ arTick = function()
         pushReceiveStatus("Lobby")
         return
     end
+    local arPingSeconds = 0.05
+    pcall(function()
+        local item = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+        if item then
+            arPingSeconds = math.clamp((tonumber(item:GetValue()) or 50) / 1000, 0, 0.2)
+        end
+    end)
+    -- Spike-tracking peak: reacts to ping spikes immediately, decays slowly,
+    -- so public users on jittery connections stay covered.
+    arPingPeak = math.max(arPingSeconds, (arPingPeak or 0.05) - 0.004)
+    local arPingComp = math.max(arPingSeconds, arPingPeak)
     local balls = scanBalls(rootPart)
     if #balls == 0 then
         pushReceiveStatus("Seeking")
         return
     end
     local target, targetDistance, targetRange, targetScore, targetFast = nil, math.huge, 0, math.huge, false
+    local targetEta, targetSpeed = math.huge, 0
     local slowDistance, farDistance, gated = math.huge, math.huge, false
+    -- Trajectory horizon: how far ahead we forecast each ball (ping + margin).
+    local arPredictT = math.min(arPingComp + 0.12, 0.35)
+    local arGravity = 196.2
+    pcall(function() arGravity = Workspace.Gravity end)
     for _, entry in ipairs(balls) do
         local velocity = entry.p.AssemblyLinearVelocity
         local speed = math.max(entry.spd or 0, velocity.Magnitude)
@@ -3645,33 +3618,42 @@ arTick = function()
         local closing = toPlayer.Magnitude > 0.1 and relativeVelocity:Dot(toPlayer.Unit) or 0
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
         local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.35) or math.huge
-        local fastIncoming = speed >= 110 and closing >= 20 and eta <= 0.30
-
+        local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.30
+        if closing < -15 then
+            if entry.d < farDistance then farDistance = entry.d end
+        else
         -- Very fast tilted/dunk-style balls get an anticipatory response window.
         -- The normal local input is still used; this only prioritizes timing.
-        local range = fastIncoming and (frontRow and math.clamp(42 + speed * 0.18, 42, 78)
-            or math.clamp(36 + speed * 0.17, 36, 70))
-            or (frontRow and math.clamp(30 + speed * 0.25, 30, 78)
-                or math.clamp(24 + speed * 0.22, 24, 62))
+        -- Trajectory forecast: judge the ball where physics says it will be
+        -- when the press lands (handles curve/dip, not just straight lines).
+        local predPos = entry.p.Position + velocity * arPredictT
+            + Vector3.new(0, -0.5 * arGravity * arPredictT * arPredictT, 0)
+        local predD = (predPos - rootPart.Position).Magnitude
+        local range = fastIncoming and (frontRow and math.clamp(46 + speed * 0.22, 42, 100)
+            or math.clamp(40 + speed * 0.20, 36, 84))
+            or (frontRow and math.clamp(36 + speed * 0.30, 34, 90)
+                or math.clamp(30 + speed * 0.27, 28, 72))
         local last = arFiredAt[entry.m]
         local cooldown = fastIncoming
-            and math.clamp(0.07 - math.clamp(speed / 300, 0, 1) * 0.03, 0.035, 0.07)
+            and math.clamp(0.05 - math.clamp(speed / 300, 0, 1) * 0.025, 0.025, 0.05)
             or (frontRow
-                and math.clamp(0.105 - math.clamp(speed / 250, 0, 1) * 0.05 + (entry.d / range) * 0.035, 0.045, 0.13)
-                or math.clamp(0.18 - math.clamp(speed / 220, 0, 1) * 0.10 + (entry.d / range) * 0.06, 0.06, 0.22))
+                and math.clamp(0.08 - math.clamp(speed / 250, 0, 1) * 0.04 + (entry.d / range) * 0.03, 0.03, 0.10)
+                or math.clamp(0.14 - math.clamp(speed / 220, 0, 1) * 0.08 + (entry.d / range) * 0.05, 0.04, 0.17))
         if last and now - last.t < cooldown then
             gated = true
         elseif speed < AutoReceiveMinSpeed then
             if entry.d < slowDistance then slowDistance = entry.d end
-        elseif entry.d > range then
+        elseif predD > range then
             if entry.d < farDistance then farDistance = entry.d end
         else
             local approachBonus = math.clamp(closing / math.max(speed, 1), -1, 1) * (fastIncoming and 0.34 or (frontRow and 0.20 or 0.08))
             local timingBonus = fastIncoming and math.clamp((0.30 - eta) / 0.30, 0, 1) * 0.16 or 0
-            local score = entry.d / range - approachBonus - timingBonus
-            if score < targetScore or (score == targetScore and entry.d < targetDistance) then
-                target, targetDistance, targetRange, targetScore, targetFast = entry, entry.d, range, score, fastIncoming
+            local score = predD / range - approachBonus - timingBonus
+            if score < targetScore or (score == targetScore and predD < targetDistance) then
+                target, targetDistance, targetRange, targetScore, targetFast = entry, predD, range, score, fastIncoming
+                targetEta, targetSpeed = eta, speed
             end
+        end
         end
     end
     if not target then
@@ -3687,10 +3669,10 @@ arTick = function()
         return
     end
     local globalGap = targetFast
-        and math.clamp(0.025 + (targetDistance / targetRange) * 0.015, 0.025, 0.04)
+        and math.clamp(0.015 + (targetDistance / targetRange) * 0.01, 0.015, 0.025)
         or (frontRow
-            and math.clamp(0.03 + (targetDistance / targetRange) * 0.02, 0.03, 0.05)
-            or math.clamp(0.03 + (targetDistance / targetRange) * 0.03, 0.03, 0.06))
+            and math.clamp(0.025 + (targetDistance / targetRange) * 0.015, 0.025, 0.04)
+            or math.clamp(0.025 + (targetDistance / targetRange) * 0.02, 0.025, 0.045))
     if now - arLastFire < globalGap then return end
     local state = humanoid:GetState()
     local airborne = state == Enum.HumanoidStateType.Jumping
@@ -3709,8 +3691,13 @@ arTick = function()
     else
         move = airborne and "JumpSet" or "Set"
     end
+    local holdDuration = targetFast and math.clamp(0.085 + targetSpeed * 0.0002, 0.085, 0.15)
+        or (frontRow and 0.065 or 0.03)
+    -- Extreme-speed timing: hold the press until arrival instead of firing
+    -- blindly at range edge (which then eats the refire through cooldown).
+    local arFireLead = arPingComp + holdDuration + 0.04 + arPingComp * 0.5
+    if targetFast and targetEta > arFireLead then return end
     arLastFire = now
-    local holdDuration = targetFast and 0.085 or (frontRow and 0.065 or 0.03)
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
         AutoReceiveCount = AutoReceiveCount + 1
@@ -4031,7 +4018,7 @@ UI.ReceiveFeatures:AddToggle({
     end
 })
 UI.ReceiveFeatures:AddBind({
-    Name = "Auto Receive Key",
+    Name = "Bind",
     Default = Enum.KeyCode.G,
     Hold = false,
     Save = true,
@@ -4047,7 +4034,7 @@ do
     KeyDetectorSetLabel = UI.ReceiveFeatures:AddLabel("Set Key: [Q]")
     local SetBind = UI.ReceiveFeatures:AddBind({
         Color = Color3.fromRGB(244, 63, 94),
-        Name = "Set Key",
+        Name = "Receive Key",
         Default = Enum.KeyCode.Q,
         Hold = false,
         Save = true,
@@ -4165,42 +4152,6 @@ UI.MoveFeatures:AddToggle({
         CameraJumpEnabled = Value
         notify(Value and "Auto Shiftlock Enabled" or "Auto Shiftlock Disabled")
     end
-})
-UI.MoveFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Shiftlock Turn Time",
-    Default = CameraJumpTurnTime,
-    Min = 0.03,
-    Max = 0.6,
-    Increment = 0.01,
-    ValueName = "s",
-    Save = true,
-    Flag = "CameraJumpTurnTime",
-    Callback = function(Value) CameraJumpTurnTime = Value end
-})
-UI.MoveFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Max Shiftlock Turn",
-    Default = CameraJumpMaxTurn,
-    Min = 10,
-    Max = 180,
-    Increment = 1,
-    ValueName = "°",
-    Save = true,
-    Flag = "CameraJumpMaxTurn",
-    Callback = function(Value) CameraJumpMaxTurn = Value end
-})
-UI.MoveFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Auto Shiftlock Cooldown",
-    Default = FeatureConfig.cameraJumpCooldown,
-    Min = 0.1,
-    Max = 2,
-    Increment = 0.01,
-    ValueName = "s",
-    Save = true,
-    Flag = "CameraJumpCooldown",
-    Callback = function(Value) FeatureConfig.cameraJumpCooldown = Value end
 })
 
 UI.MainVisuals:AddToggle({
@@ -4883,6 +4834,11 @@ local function shijinFullCleanup()
     speedChar, speedHum, speedRoot = nil, nil, nil
     DirectionalHitEnabled = false
     CameraJumpEnabled = false
+    pcall(function()
+        local ch = LocalPlayer.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum.AutoRotate = true end
+    end)
     AutoStrongServeEveryServeEnabled = false
     AntiModEnabled = false
     StreamerModeEnabled = false
@@ -4970,7 +4926,7 @@ UnloadBtn = UI.SettingsActions:AddButton({
 UI.SettingsActions:AddButton({
     Name = "Copy Discord Invite",
     Callback = function()
-        local ok = pcall(function() setclipboard("https://discord.gg/VGvURh5rak") end)
+        local ok = pcall(function() setclipboard("https://discord.gg/wwHXeQaAqS") end)
         notify(ok and "Copied" or "Clipboard is unavailable", 3)
     end
 })
