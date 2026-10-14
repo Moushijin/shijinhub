@@ -474,7 +474,7 @@ end
 local function pressDetectedMove(moveName, holdDuration)
     if ShijinUnloaded then return end
     local VIM = game:GetService("VirtualInputManager")
-    local hold = math.clamp(tonumber(holdDuration) or 0.03, 0.015, 0.20)
+    local hold = math.clamp(tonumber(holdDuration) or 0.05, 0.02, 0.30)
     local kc, it
     if moveName == "JumpSet" then kc, it = KeyDetectorJumpSetKeyCode, KeyDetectorJumpSetInputType
     else kc, it = KeyDetectorSetKeyCode, KeyDetectorSetInputType end
@@ -3607,7 +3607,7 @@ arTick = function()
     local targetEta, targetSpeed = math.huge, 0
     local slowDistance, farDistance, gated = math.huge, math.huge, false
     -- Trajectory horizon: how far ahead we forecast each ball (ping + margin).
-    local arPredictT = math.min(arPingComp + 0.12, 0.35)
+    local arPredictT = math.min(arPingComp + 0.20, 0.50)
     local arGravity = 196.2
     pcall(function() arGravity = Workspace.Gravity end)
     for _, entry in ipairs(balls) do
@@ -3617,8 +3617,8 @@ arTick = function()
         local relativeVelocity = velocity - rootPart.AssemblyLinearVelocity
         local closing = toPlayer.Magnitude > 0.1 and relativeVelocity:Dot(toPlayer.Unit) or 0
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
-        local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.35) or math.huge
-        local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.30
+        local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.5) or math.huge
+        local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.40
         if closing < -15 then
             if entry.d < farDistance then farDistance = entry.d end
         else
@@ -3691,11 +3691,11 @@ arTick = function()
     else
         move = airborne and "JumpSet" or "Set"
     end
-    local holdDuration = targetFast and math.clamp(targetEta + 0.08, 0.085, 0.20)
-        or (frontRow and 0.065 or 0.03)
+    local holdDuration = targetFast and math.clamp(targetEta + 0.12, 0.10, 0.25)
+        or (frontRow and 0.09 or 0.06)
     -- Fire while arrival is inside the forecast window; the hold is sized to
     -- still be down at contact, and short cooldowns keep coverage across it.
-    if targetFast and targetEta > 0.30 then return end
+    if targetFast and targetEta > 0.40 then return end
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
