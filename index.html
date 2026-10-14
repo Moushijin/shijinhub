@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shijin Hub</title>
+<style>
+  :root {
+    --bg: #0F0F23;
+    --card: #1E1C35;
+    --muted: #27273B;
+    --border: #4C1D95;
+    --text: #E2E8F0;
+    --text-dim: #94A3B8;
+    --primary: #7C3AED;
+    --accent: #F43F5E;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* ---- loading screen (2s) ---- */
+  #loader {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    z-index: 50;
+    transition: opacity 0.4s ease;
+  }
+  #loader.hide { opacity: 0; pointer-events: none; }
+  #loader img { width: 120px; height: 120px; }
+  .spin {
+    width: 44px; height: 44px;
+    border: 4px solid var(--muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* ---- cards ---- */
+  .card {
+    display: none;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 44px;
+    width: min(480px, calc(100vw - 48px));
+    text-align: center;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+  }
+  .card.show { display: block; }
+  .card img.logo { width: 110px; height: 110px; margin-bottom: 18px; }
+  h1 { font-size: 30px; letter-spacing: 1px; margin-bottom: 6px; }
+  h1 span { color: var(--accent); }
+  .ver { color: var(--text-dim); font-size: 13px; margin-bottom: 24px; }
+  p.desc { color: var(--text-dim); font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+  .btn {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px 30px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(244,63,94,0.35); }
+  .btn.ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    margin-top: 12px;
+    font-size: 14px;
+    padding: 10px 22px;
+  }
+  .loadbox {
+    background: #0a0a18;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    word-break: break-all;
+    text-align: left;
+    margin: 18px 0 6px;
+    max-height: 110px;
+    overflow-y: auto;
+  }
+  .err { color: var(--accent); font-size: 14px; margin-bottom: 16px; }
+  .note { color: var(--text-dim); font-size: 12px; margin-top: 18px; line-height: 1.6; }
+  code { color: var(--text); background: var(--muted); padding: 1px 6px; border-radius: 5px; }
+</style>
+</head>
+<body>
+
+<!-- loading screen -->
+<div id="loader">
+  <img src="shijin-logo.svg" alt="Shijin Hub">
+  <div class="spin"></div>
+</div>
+
+<!-- login gate -->
+<div class="card" id="view-login">
+  <img class="logo" src="shijin-logo.svg" alt="Shijin Hub">
+  <h1>SHIJIN <span>HUB</span></h1>
+  <div class="ver">v0.0.1 Beta</div>
+  <p class="desc">Members-only. Log in with Discord to prove you're in the Shijin Hub server.</p>
+  <button class="btn" id="btn-login">Login with Discord</button>
+  <div class="note" id="setup-note" style="display:none">
+    Site owner: set your Discord application Client ID in <code>index.html</code>
+    (<code>CLIENT_ID</code>) and add this page's URL as a redirect in the
+    <a href="https://discord.com/developers/applications" style="color:var(--accent)">developer portal</a>.
+  </div>
+</div>
+
+<!-- access denied -->
+<div class="card" id="view-denied">
+  <img class="logo" src="shijin-logo.svg" alt="Shijin Hub">
+  <h1>NO <span>ACCESS</span></h1>
+  <p class="desc" id="denied-text">That Discord account isn't in the Shijin Hub server.</p>
+  <a class="btn" href="https://discord.gg/wwHXeQaAqS" target="_blank" rel="noopener">Join the Server</a><br>
+  <button class="btn ghost" id="btn-retry">Try a different account</button>
+</div>
+
+<!-- member content -->
+<div class="card" id="view-main">
+  <img class="logo" src="shijin-logo.svg" alt="Shijin Hub">
+  <h1>SHIJIN <span>HUB</span></h1>
+  <div class="ver" id="hello">v0.0.1 Beta</div>
+  <div class="loadbox" id="loadstring"></div>
+  <button class="btn" id="btn-copy">Copy Loadstring</button><br>
+  <a class="btn ghost" href="https://discord.gg/wwHXeQaAqS" target="_blank" rel="noopener">Discord Server</a><br>
+  <button class="btn ghost" id="btn-logout">Log out</button>
+</div>
+
+<script>
+"use strict";
+/* ===== setup: paste your Discord application Client ID below ===== */
+const CLIENT_ID = "PASTE_DISCORD_CLIENT_ID_HERE";
+const GUILD_ID = "1559795302020554764";
+const INVITE = "https://discord.gg/wwHXeQaAqS";
+const LOADSTRING = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Moushijin/shijinhub/main/Shijin-Hub.lua"))()';
+
+const $ = (id) => document.getElementById(id);
+const views = ["view-login", "view-denied", "view-main"];
+function show(id) {
+  views.forEach((v) => $(v).classList.toggle("show", v === id));
+}
+
+function redirectUri() {
+  return window.location.origin + window.location.pathname;
+}
+
+function login() {
+  if (!CLIENT_ID || CLIENT_ID === "PASTE_DISCORD_CLIENT_ID_HERE") {
+    $("setup-note").style.display = "block";
+    return;
+  }
+  const url = "https://discord.com/oauth2/authorize"
+    + "?client_id=" + encodeURIComponent(CLIENT_ID)
+    + "&response_type=token"
+    + "&redirect_uri=" + encodeURIComponent(redirectUri())
+    + "&scope=" + encodeURIComponent("identify guilds");
+  window.location.href = url;
+}
+
+function logout() {
+  window.location.hash = "";
+  window.location.reload();
+}
+
+async function boot() {
+  // 2s loading screen, always
+  await new Promise((r) => setTimeout(r, 2000));
+  $("loader").classList.add("hide");
+
+  $("loadstring").textContent = LOADSTRING;
+  $("btn-login").onclick = login;
+  $("btn-logout").onclick = logout;
+  $("btn-retry").onclick = logout;
+  $("btn-copy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(LOADSTRING);
+      $("btn-copy").textContent = "Copied!";
+    } catch (e) {
+      $("btn-copy").textContent = "Copy failed — select manually";
+    }
+    setTimeout(() => { $("btn-copy").textContent = "Copy Loadstring"; }, 2000);
+  };
+
+  const m = window.location.hash.match(/access_token=([^&]+)/);
+  if (!m) { show("view-login"); return; }
+  const token = m[1];
+  // wipe token from the address bar
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+
+  try {
+    const meRes = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: "Bearer " + token }
+    });
+    if (!meRes.ok) throw new Error("auth");
+    const me = await meRes.json();
+
+    const gRes = await fetch("https://discord.com/api/users/@me/guilds", {
+      headers: { Authorization: "Bearer " + token }
+    });
+    if (!gRes.ok) throw new Error("auth");
+    const guilds = await gRes.json();
+    const member = Array.isArray(guilds) && guilds.some((g) => g && g.id === GUILD_ID);
+
+    if (member) {
+      $("hello").textContent = "v0.0.1 Beta · logged in as " + (me.global_name || me.username || "member");
+      show("view-main");
+    } else {
+      show("view-denied");
+    }
+  } catch (e) {
+    show("view-login");
+  }
+}
+
+document.addEventListener("DOMContentLoaded", boot);
+</script>
+</body>
+</html>
