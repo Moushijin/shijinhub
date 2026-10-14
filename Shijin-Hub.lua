@@ -474,7 +474,7 @@ end
 local function pressDetectedMove(moveName, holdDuration)
     if ShijinUnloaded then return end
     local VIM = game:GetService("VirtualInputManager")
-    local hold = math.clamp(tonumber(holdDuration) or 0.03, 0.015, 0.15)
+    local hold = math.clamp(tonumber(holdDuration) or 0.03, 0.015, 0.20)
     local kc, it
     if moveName == "JumpSet" then kc, it = KeyDetectorJumpSetKeyCode, KeyDetectorJumpSetInputType
     else kc, it = KeyDetectorSetKeyCode, KeyDetectorSetInputType end
@@ -3550,7 +3550,7 @@ local function scanBalls(root)
             entry.d = (pos - root.Position).Magnitude
             if entry.lt and nowS - entry.lt <= 1 then
                 local sdt = nowS - entry.lt
-                if sdt >= 0.1 then
+                if sdt >= 0.03 then
                     entry.spd = math.max((pos - entry.lp).Magnitude / sdt, part.AssemblyLinearVelocity.Magnitude)
                     entry.lp, entry.lt = pos, nowS
                 end
@@ -3635,7 +3635,7 @@ arTick = function()
                 or math.clamp(30 + speed * 0.27, 28, 72))
         local last = arFiredAt[entry.m]
         local cooldown = fastIncoming
-            and math.clamp(0.05 - math.clamp(speed / 300, 0, 1) * 0.025, 0.025, 0.05)
+            and math.clamp(0.04 - math.clamp(speed / 300, 0, 1) * 0.025, 0.015, 0.04)
             or (frontRow
                 and math.clamp(0.08 - math.clamp(speed / 250, 0, 1) * 0.04 + (entry.d / range) * 0.03, 0.03, 0.10)
                 or math.clamp(0.14 - math.clamp(speed / 220, 0, 1) * 0.08 + (entry.d / range) * 0.05, 0.04, 0.17))
@@ -3669,7 +3669,7 @@ arTick = function()
         return
     end
     local globalGap = targetFast
-        and math.clamp(0.015 + (targetDistance / targetRange) * 0.01, 0.015, 0.025)
+        and math.clamp(0.01 + (targetDistance / targetRange) * 0.01, 0.01, 0.02)
         or (frontRow
             and math.clamp(0.025 + (targetDistance / targetRange) * 0.015, 0.025, 0.04)
             or math.clamp(0.025 + (targetDistance / targetRange) * 0.02, 0.025, 0.045))
@@ -3691,12 +3691,11 @@ arTick = function()
     else
         move = airborne and "JumpSet" or "Set"
     end
-    local holdDuration = targetFast and math.clamp(0.085 + targetSpeed * 0.0002, 0.085, 0.15)
+    local holdDuration = targetFast and math.clamp(targetEta + 0.08, 0.085, 0.20)
         or (frontRow and 0.065 or 0.03)
-    -- Extreme-speed timing: hold the press until arrival instead of firing
-    -- blindly at range edge (which then eats the refire through cooldown).
-    local arFireLead = arPingComp + holdDuration + 0.04 + arPingComp * 0.5
-    if targetFast and targetEta > arFireLead then return end
+    -- Fire while arrival is inside the forecast window; the hold is sized to
+    -- still be down at contact, and short cooldowns keep coverage across it.
+    if targetFast and targetEta > 0.30 then return end
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
