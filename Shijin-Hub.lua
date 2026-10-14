@@ -399,10 +399,6 @@ local KeyDetectorJumpSetKeyCode = Enum.KeyCode.E
 local KeyDetectorJumpSetInputType = Enum.UserInputType.Keyboard
 local KeyDetectorSetLabel = nil
 local KeyDetectorJumpSetLabel = nil
-local KeyDetectorDiveKey = "LeftControl"
-local KeyDetectorDiveKeyCode = Enum.KeyCode.LeftControl
-local KeyDetectorDiveInputType = Enum.UserInputType.Keyboard
-local KeyDetectorDiveLabel = nil
 
 local function updateKeyDetectorLabels()
     pcall(function()
@@ -414,13 +410,9 @@ local function updateKeyDetectorLabels()
                 JumpSetKeyCode = KeyDetectorJumpSetKeyCode,
                 SetInputType = KeyDetectorSetInputType,
                 JumpSetInputType = KeyDetectorJumpSetInputType,
-                Dive = KeyDetectorDiveKey,
-                DiveKeyCode = KeyDetectorDiveKeyCode,
-                DiveInputType = KeyDetectorDiveInputType,
             }
             getgenv().ShijinSetKey = KeyDetectorSetKey
             getgenv().ShijinJumpSetKey = KeyDetectorJumpSetKey
-            getgenv().ShijinDiveKey = KeyDetectorDiveKey
         end
     end)
     pcall(function()
@@ -431,11 +423,6 @@ local function updateKeyDetectorLabels()
     pcall(function()
         if KeyDetectorJumpSetLabel then
             KeyDetectorJumpSetLabel:Set("JumpSet Key: [" .. tostring(KeyDetectorJumpSetKey) .. "]")
-        end
-    end)
-    pcall(function()
-        if KeyDetectorDiveLabel then
-            KeyDetectorDiveLabel:Set("Dive Key: [" .. tostring(KeyDetectorDiveKey) .. "]")
         end
     end)
 end
@@ -490,8 +477,7 @@ local function pressDetectedMove(moveName, holdDuration)
     local VIM = game:GetService("VirtualInputManager")
     local hold = math.clamp(tonumber(holdDuration) or 0.05, 0.02, 0.30)
     local kc, it
-    if moveName == "Dive" then kc, it = KeyDetectorDiveKeyCode, KeyDetectorDiveInputType
-    elseif moveName == "JumpSet" then kc, it = KeyDetectorJumpSetKeyCode, KeyDetectorJumpSetInputType
+    if moveName == "JumpSet" then kc, it = KeyDetectorJumpSetKeyCode, KeyDetectorJumpSetInputType
     else kc, it = KeyDetectorSetKeyCode, KeyDetectorSetInputType end
     local sent = false
     local ok = pcall(function()
@@ -3434,10 +3420,6 @@ local AutoReceiveCount = 0
 local AutoReceiveStatusLabel = nil
 local AutoReceiveInfoLabel = nil
 local AutoReceiveConn = nil
-local AutoDiveEnabled = false
-local AutoDiveLastPress = 0
-local AutoDiveStatusText = ""
-local AutoDiveStatusLabel = nil
 local arTick
 
 local ballCache, ballCacheT, ballScanConn, deepScanT = {}, -10, nil, -10
@@ -3594,88 +3576,6 @@ local function scanBalls(root)
     return list
 end
 
-local function fireDive()
-    if ShijinUnloaded then return false end
-    local ok, sent = pcall(pressDetectedMove, "Dive", 0.12)
-    return ok and sent == true
-end
-
-local function setDiveStatus(text)
-    if text == AutoDiveStatusText then return end
-    AutoDiveStatusText = text
-    pcall(function()
-        if AutoDiveStatusLabel then AutoDiveStatusLabel:Set("Dive: " .. text) end
-    end)
-end
-
--- Auto Dive: when the ball is outside receive range, run its trajectory
--- forward and dive. The press goes through the game's own dive action, so
--- style dive stats apply — no custom movement speeds anywhere. Only runs
--- while Auto Receive is on, grounded, and never fights your own movement.
-local function diveTick(balls, rootPart, humanoid)
-    if not AutoDiveEnabled or not AutoReceiveEnabled or ShijinUnloaded then return end
-    local hstate = humanoid:GetState()
-    if hstate == Enum.HumanoidStateType.Jumping
-        or hstate == Enum.HumanoidStateType.Freefall
-        or humanoid.FloorMaterial == Enum.Material.Air
-        or math.abs(rootPart.AssemblyLinearVelocity.Y) > 3 then
-        return
-    end
-    if humanoid.MoveDirection.Magnitude > 0.1 then
-        setDiveStatus("Waiting (moving)")
-        return
-    end
-    local now = os.clock()
-    local grav = 196.2
-    pcall(function() grav = Workspace.Gravity end)
-    local bestEta, bestPoint = math.huge, nil
-    for _, entry in ipairs(balls) do
-        local part = entry.p
-        if part and part.Parent then
-            local vel = part.AssemblyLinearVelocity
-            local speed = math.max(entry.spd or 0, vel.Magnitude)
-            if speed >= 5 then
-                local toPlayer = rootPart.Position - part.Position
-                local rel = vel - rootPart.AssemblyLinearVelocity
-                local closing = toPlayer.Magnitude > 0.1 and rel:Dot(toPlayer.Unit) or 0
-                if closing > -5 then
-                    local rrange = entry.range or 60
-                    local pd = entry.predD or (part.Position - rootPart.Position).Magnitude
-                    -- Dive territory: outside receive range, OR so slow that
-                    -- receive will never take it (closes the slow-ball dead zone).
-                    if pd > rrange or speed < AutoReceiveMinSpeed then
-                        local t = 0.05
-                        while t <= 1.1 do
-                            local q = part.Position + vel * t
-                            q = Vector3.new(q.X, math.max(q.Y - 0.5 * grav * t * t, 0.5), q.Z)
-                            local hd = Vector3.new(q.X - rootPart.Position.X, 0, q.Z - rootPart.Position.Z).Magnitude
-                            if q.Y <= 13 and hd <= 30 then
-                                if t < bestEta then bestEta, bestPoint = t, q end
-                                break
-                            end
-                            t = t + 0.05
-                        end
-                    end
-                end
-            end
-        end
-    end
-    if not bestPoint then
-        setDiveStatus("Ready")
-        return
-    end
-    pcall(function() humanoid:MoveTo(bestPoint) end)
-    local hdNow = Vector3.new(bestPoint.X - rootPart.Position.X, 0, bestPoint.Z - rootPart.Position.Z).Magnitude
-    if (hdNow <= 15 or bestEta <= 0.3) and now - AutoDiveLastPress >= 0.6 then
-        if fireDive() then
-            AutoDiveLastPress = now
-            setDiveStatus("Dove!")
-        end
-    else
-        setDiveStatus("Diving...")
-    end
-end
-
 arTick = function()
     if not AutoReceiveEnabled or ShijinUnloaded then return end
     local now = os.clock()
@@ -3741,13 +3641,12 @@ arTick = function()
             or math.clamp(40 + speed * 0.20, 36, 84))
             or (frontRow and math.clamp(36 + speed * 0.30, 34, 90)
                 or math.clamp(30 + speed * 0.27, 28, 72))
-        entry.range, entry.predD = range, predD
         local last = arFiredAt[entry.m]
         local cooldown = fastIncoming
-            and math.clamp(0.04 - math.clamp(speed / 300, 0, 1) * 0.025, 0.01, 0.03)
+            and math.clamp(0.10 - math.clamp(speed / 300, 0, 1) * 0.05, 0.08, 0.15)
             or (frontRow
-                and math.clamp(0.08 - math.clamp(speed / 250, 0, 1) * 0.04 + (entry.d / range) * 0.03, 0.03, 0.10)
-                or math.clamp(0.14 - math.clamp(speed / 220, 0, 1) * 0.08 + (entry.d / range) * 0.05, 0.04, 0.17))
+                and math.clamp(0.30 - math.clamp(speed / 250, 0, 1) * 0.10 + (entry.d / range) * 0.05, 0.25, 0.40)
+                or math.clamp(0.35 - math.clamp(speed / 220, 0, 1) * 0.10 + (entry.d / range) * 0.05, 0.30, 0.45))
         if last and now - last.t < cooldown then
             gated = true
         elseif speed < AutoReceiveMinSpeed then
@@ -3766,7 +3665,6 @@ arTick = function()
         end
     end
     if not target then
-        diveTick(balls, rootPart, humanoid)
         if slowDistance < math.huge then
             pushReceiveStatus("Waiting for ball speed", slowDistance)
         elseif farDistance < math.huge then
@@ -3816,6 +3714,20 @@ arTick = function()
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
+        -- Step toward the ball while the press lands (0.2s): local Humanoid
+        -- control only, no remotes, and never overrides your own movement.
+        if humanoid.MoveDirection.Magnitude < 0.1 then
+            pcall(function() humanoid:MoveTo(target.p.Position) end)
+            task.delay(0.2, function()
+                pcall(function()
+                    if AutoReceiveEnabled and not ShijinUnloaded and humanoid.Parent
+                        and humanoid.MoveDirection.Magnitude < 0.1 then
+                        local r = char and char:FindFirstChild("HumanoidRootPart")
+                        if r then humanoid:MoveTo(r.Position) end
+                    end
+                end)
+            end)
+        end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
         pushReceiveStatus("Pressed " .. move .. suffix, targetDistance)
@@ -4146,57 +4058,6 @@ UI.ReceiveFeatures:AddBind({
 })
 AutoReceiveStatusLabel = UI.ReceiveFeatures:AddLabel("State: OFF")
 AutoReceiveInfoLabel = UI.ReceiveFeatures:AddLabel("Ball: --st  |  Received: 0")
-UI.ReceiveFeatures:AddToggle({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Auto Dive",
-    Default = false,
-    Save = true,
-    Flag = "AutoDiveToggle",
-    Callback = function(Value)
-        AutoDiveEnabled = Value
-        if not Value then
-            setDiveStatus("OFF")
-            pcall(function()
-                local char = LocalPlayer.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                if hum and root then hum:MoveTo(root.Position) end
-            end)
-        else
-            setDiveStatus("Ready")
-        end
-        notify(Value and "Auto Dive ON" or "Auto Dive OFF", 4)
-    end
-})
-AutoDiveStatusLabel = UI.ReceiveFeatures:AddLabel("Dive: OFF")
-do
-    KeyDetectorDiveLabel = UI.ReceiveFeatures:AddLabel("Dive Key: [LeftControl]")
-    local DiveBind = UI.ReceiveFeatures:AddBind({
-        Color = Color3.fromRGB(167, 139, 250),
-        Name = "Dive Key",
-        Default = Enum.KeyCode.LeftControl,
-        Hold = false,
-        Save = true,
-        Flag = "ManualDiveKeyPicker",
-        Callback = function() end
-    })
-    local origDiveSet = DiveBind.Set
-    function DiveBind:Set(Key)
-        origDiveSet(self, Key)
-        pcall(function()
-            local raw = DiveBind.Value
-            if type(raw) == "string" then
-                local kc, it, disp = stringToKeyInput(raw)
-                if disp and disp ~= "" and disp ~= "Unknown" and disp ~= "None" then
-                    KeyDetectorDiveKey = disp
-                    if kc then KeyDetectorDiveKeyCode = kc end
-                    if it then KeyDetectorDiveInputType = it end
-                    updateKeyDetectorLabels()
-                end
-            end
-        end)
-    end
-end
 do
     KeyDetectorSetLabel = UI.ReceiveFeatures:AddLabel("Set Key: [Q]")
     local SetBind = UI.ReceiveFeatures:AddBind({
