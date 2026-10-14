@@ -4721,6 +4721,22 @@ UI.SettingsConfig:AddDropdown({
         ConfigListSelected = (Value ~= "...") and Value or nil
     end
 })
+local orionActiveSlot = nil
+local orionAutosaveOn = false
+local orionLastSlotJson = nil
+local ConfigActiveLabel = UI.SettingsConfig:AddLabel("Active slot: none")
+local function orionSnapshotActive()
+    pcall(function()
+        orionLastSlotJson = OrionSlotService:JSONEncode(orionPackFlags())
+    end)
+end
+local function orionSetActive(name)
+    orionActiveSlot = name
+    pcall(function()
+        ConfigActiveLabel:Set("Active slot: " .. (name or "none"))
+    end)
+    orionSnapshotActive()
+end
 UI.SettingsConfig:AddButton({
     Name = "Create config",
     Callback = function()
@@ -4730,6 +4746,7 @@ UI.SettingsConfig:AddButton({
         orionRefreshSlotList()
         pcall(function() OrionLib.Flags["ConfigList"]:Set(name) end)
         ConfigListSelected = name
+        orionSetActive(name)
         notify("Saved config " .. name, 4)
     end
 })
@@ -4738,7 +4755,9 @@ UI.SettingsConfig:AddButton({
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
         if name == "" then return notify("Select a config to load", 4) end
-        if orionLoadSlot(name) then notify("Loaded config " .. name, 4)
+        if orionLoadSlot(name) then
+            orionSetActive(name)
+            notify("Loaded config " .. name, 4)
         else notify("Could not load config " .. name, 4) end
     end
 })
@@ -4750,7 +4769,34 @@ UI.SettingsConfig:AddButton({
         if not orionDeleteSlot(name) then return notify("Could not delete config " .. name, 4) end
         orionRefreshSlotList()
         ConfigListSelected = nil
+        if orionActiveSlot == name then orionSetActive(nil) end
         notify("Deleted config " .. name, 4)
+    end
+})
+UI.SettingsConfig:AddButton({
+    Name = "Save slot",
+    Callback = function()
+        local name = orionCleanSlotName(ConfigListSelected or orionActiveSlot)
+        if name == "" then return notify("Select a config first", 4) end
+        if orionSaveSlot(name) then
+            orionSetActive(name)
+            notify("Saved " .. name, 3)
+        else notify("Could not save " .. name, 4) end
+    end
+})
+UI.SettingsConfig:AddToggle({
+    Name = "Autosave active slot",
+    Default = false,
+    Save = false,
+    Flag = "ConfigAutosave",
+    Callback = function(Value)
+        orionAutosaveOn = Value == true
+        if Value then
+            orionSnapshotActive()
+            notify("Autosave on" .. (orionActiveSlot and (" for " .. orionActiveSlot) or ""), 3)
+        else
+            notify("Autosave off", 3)
+        end
     end
 })
 local ConfigAutoloadLabel = UI.SettingsConfig:AddLabel("Autoload: none")
@@ -4779,6 +4825,23 @@ UI.SettingsConfig:AddButton({
         notify("Autoload cleared", 4)
     end
 })
+
+-- Smart autosave: every 5s, persist the active slot only if flags changed.
+task.spawn(function()
+    while not ShijinUnloaded do
+        task.wait(5)
+        if orionAutosaveOn and orionActiveSlot and not ShijinUnloaded then
+            pcall(function()
+                local json = OrionSlotService:JSONEncode(orionPackFlags())
+                if json ~= orionLastSlotJson then
+                    if orionSaveSlot(orionActiveSlot) then
+                        orionLastSlotJson = json
+                    end
+                end
+            end)
+        end
+    end
+end)
 
 local function shijinFullCleanup()
     if ShijinUnloaded then return end
@@ -4951,6 +5014,6 @@ pcall(function() OrionLib:Init() end)
 pcall(function()
     if orionSlotsUsable() and isfile("ShijinHub/autoload.txt") then
         local name = orionCleanSlotName(readfile("ShijinHub/autoload.txt"))
-        if name ~= "" then orionLoadSlot(name) end
+        if name ~= "" and orionLoadSlot(name) then orionSetActive(name) end
     end
 end)
