@@ -142,7 +142,18 @@ local ScriptName = "Shijin Hub"
 
 -- ORION SOURCE: https://raw.githubusercontent.com/Snxdfer/back-ups-for-libs/refs/heads/main/Orion.lua
 -- (verified genuine Orion Lib 2026-10-14: MakeWindow/MakeTab/AddSection, Toggle/Slider/Dropdown/Colorpicker/Bind/Textbox/Label/Button, MakeNotification, SaveConfig+Flags, Destroy)
-local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Snxdfer/back-ups-for-libs/refs/heads/main/Orion.lua"))()
+local OrionLib = nil
+for i = 1, 3 do
+    pcall(function()
+        local body = game:HttpGet("https://raw.githubusercontent.com/Snxdfer/back-ups-for-libs/refs/heads/main/Orion.lua")
+        if type(body) == "string" and #body > 10000 then
+            OrionLib = loadstring(body)()
+        end
+    end)
+    if OrionLib then break end
+    task.wait(1)
+end
+assert(OrionLib, "Shijin Hub: could not download the UI library.")
 local Library = OrionLib -- compat alias for the hub-loaded guard below
 local Options = OrionLib.Flags
 
@@ -3414,6 +3425,7 @@ hubConn(Players.PlayerRemoving, function(player)
 end)
 
 local AutoReceiveEnabled = false
+local AutoDirectRemote = false
 local AutoReceiveMode = "Set"
 local AutoReceiveMinSpeed = 25
 local AutoReceiveCount = 0
@@ -3482,7 +3494,7 @@ local function fireAutoReceive(move, holdDuration)
 end
 local function scanBalls(root)
     local nowS = os.clock()
-    if nowS - ballCacheT > 0.02 then
+    if nowS - ballCacheT > 0.25 then
         ballCacheT = nowS
         local found = VX.scanFound
         VX.clear(found)
@@ -3576,6 +3588,26 @@ local function scanBalls(root)
     return list
 end
 
+local function fireRemoteReceive(move)
+    -- Direct Knit call: BallService.RF.Interact, same shape the game itself
+    -- uses for Spike (Move + LookVector + Direction). Returns true only on a
+    -- clean server round-trip; anything else falls back to key simulation.
+    if ShijinUnloaded then return false end
+    local ok = pcall(function()
+        local services = ReplicatedStorage.Packages._Index["sleitnick_knit@1.7.0"].knit.Services
+        local bs = services and services:FindFirstChild("BallService")
+        local rf = bs and bs:FindFirstChild("RF")
+        local remote = rf and rf:FindFirstChild("Interact")
+        assert(remote and remote:IsA("RemoteFunction"), "no interact remote")
+        local dir = Vector3.new(0, 0, -1)
+        local c = LocalPlayer.Character
+        local rp = c and c:FindFirstChild("HumanoidRootPart")
+        if rp then dir = rp.CFrame.LookVector end
+        remote:InvokeServer({ Move = move, LookVector = dir, Direction = dir })
+    end)
+    return ok
+end
+
 arTick = function()
     if not AutoReceiveEnabled or ShijinUnloaded then return end
     local now = os.clock()
@@ -3654,7 +3686,7 @@ arTick = function()
             local dv = (last.v and (velocity - last.v).Magnitude) or math.huge
             if age < cooldown then
                 gated = true
-            elseif age < 1.5 and not (dv > 20 and closing > 5 and age > 0.12) then
+            elseif age < 0.9 and not (dv > 12 and closing > 5 and age > 0.12) then
                 -- Same flight, already pressed: hold fire. A genuine re-hit
                 -- (velocity jumped, ball coming at us) earns a fresh press.
                 gated = true
@@ -3725,7 +3757,8 @@ arTick = function()
         return
     end
     arLastFire = now
-    if fireAutoReceive(move, holdDuration) then
+    local usedRemote = AutoDirectRemote and fireRemoteReceive(move)
+    if (usedRemote or fireAutoReceive(move, holdDuration)) then
         arFiredAt[target.m] = { t = now, v = target.p.AssemblyLinearVelocity }
         -- Step-in window follows the press: hold + margin, bounded so a slow
         -- ball costs little control and a fast ball gets the full run.
@@ -3775,6 +3808,7 @@ arTick = function()
         end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
+        if usedRemote then suffix = suffix .. " [remote]" end
         pushReceiveStatus("Pressed " .. move .. suffix, targetDistance)
     else
         pushReceiveStatus("Input unavailable", targetDistance)
@@ -3805,7 +3839,10 @@ local function setAutoReceiveEnabled(state)
         AutoReceiveCount = 0
         if not ballScanConn then
             ballScanConn = Workspace.ChildAdded:Connect(function(ch)
-                if ch:IsA("Model") or ch:IsA("BasePart") then ballCacheT = -10 end
+                if ch:IsA("Model") or ch:IsA("BasePart") then
+                    local n = ch.Name
+                    if type(n) == "string" and n:upper():find("BALL", 1, true) then ballCacheT = -10 end
+                end
             end)
         end
         if AutoReceiveConn then
@@ -4099,6 +4136,17 @@ UI.ReceiveFeatures:AddBind({
     Callback = function()
         local t = OrionLib.Flags["AutoReceiveToggle"]
         if t then t:Set(not t.Value) end
+    end
+})
+UI.ReceiveFeatures:AddToggle({
+    Color = Color3.fromRGB(244, 63, 94),
+    Name = "Direct Remote Fire",
+    Default = false,
+    Save = true,
+    Flag = "AutoDirectRemoteToggle",
+    Callback = function(Value)
+        AutoDirectRemote = Value
+        notify(Value and "Direct Remote Fire ON" or "Direct Remote Fire OFF", 4)
     end
 })
 AutoReceiveStatusLabel = UI.ReceiveFeatures:AddLabel("State: OFF")
