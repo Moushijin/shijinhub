@@ -209,8 +209,9 @@ local FeatureConfig = {
     performanceLevel = "Balanced",
     performanceYieldEvery = 320,
 }
-local function notify(message, lifetime)
-    if ShijinUnloaded or ShijinBuilding or not FeatureConfig.notifications then return end
+local function notify(message, lifetime, force)
+    if ShijinUnloaded or ShijinBuilding then return end
+    if not force and not FeatureConfig.notifications then return end
     pcall(function()
         OrionLib:MakeNotification({
             Name = "◈ Shijin Hub",
@@ -3414,7 +3415,7 @@ end)
 
 local AutoReceiveEnabled = false
 local AutoReceiveMode = "Set"
-local AutoReceiveMinSpeed = 50
+local AutoReceiveMinSpeed = 25
 local AutoReceiveCount = 0
 local AutoReceiveStatusLabel = nil
 local AutoReceiveInfoLabel = nil
@@ -3703,6 +3704,13 @@ arTick = function()
     -- Fire while arrival is inside the forecast window; the hold is sized to
     -- still be down at contact, and short cooldowns keep coverage across it.
     if targetFast and targetEta > 0.40 then return end
+    -- Arrival gate: never spray presses at balls seconds away. Fire only when
+    -- the press will still be down at contact (hold + reaction margin), unless
+    -- the ball is already on top of us.
+    if targetEta ~= math.huge and targetEta > holdDuration + 0.15 and targetDistance > 12 then
+        pushReceiveStatus("Tracking ball...", targetDistance)
+        return
+    end
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
@@ -4671,9 +4679,17 @@ local function orionApplyFlags(data)
     end
     return true
 end
+local function orionEnsureFolder()
+    if not orionSlotsUsable() then return false end
+    pcall(function()
+        if not isfile("ShijinHub") then makefolder("ShijinHub") end
+    end)
+    return true
+end
 local function orionSaveSlot(name)
     name = orionCleanSlotName(name)
     if name == "" or not orionSlotsUsable() then return false end
+    orionEnsureFolder()
     local ok = pcall(function()
         writefile(orionSlotPath(name), OrionSlotService:JSONEncode(orionPackFlags()))
     end)
@@ -4689,7 +4705,12 @@ local function orionLoadSlot(name)
     if type(body) ~= "string" or body == "" then return false end
     local data = nil
     pcall(function() data = OrionSlotService:JSONDecode(body) end)
-    return orionApplyFlags(data)
+    -- Quiet apply: restored flags must not each fire their own popup.
+    local wasBuilding = ShijinBuilding
+    ShijinBuilding = true
+    local applied = orionApplyFlags(data)
+    ShijinBuilding = wasBuilding
+    return applied
 end
 local function orionDeleteSlot(name)
     name = orionCleanSlotName(name)
@@ -4708,10 +4729,10 @@ local function orionRefreshSlotList()
     return names
 end
 
-local uxoConfigName = "config"
+local uxoConfigName = ""
 UI.SettingsConfig:AddTextbox({
     Name = "Config name",
-    Default = "config",
+    Default = "",
     TextDisappear = false,
     Callback = function(Value)
         uxoConfigName = tostring(Value or "")
@@ -4748,47 +4769,47 @@ UI.SettingsConfig:AddButton({
     Name = "Create config",
     Callback = function()
         local name = orionCleanSlotName(uxoConfigName)
-        if name == "" then return notify("Type a config name first", 4) end
-        if not orionSaveSlot(name) then return notify("Could not save config " .. name, 4) end
+        if name == "" then return notify("Type a config name first", 4, true) end
+        if not orionSaveSlot(name) then return notify("Could not save config " .. name, 4, true) end
         orionRefreshSlotList()
         pcall(function() OrionLib.Flags["ConfigList"]:Set(name) end)
         ConfigListSelected = name
         orionSetActive(name)
-        notify("Saved config " .. name, 4)
+        notify("Saved config " .. name, 4, true)
     end
 })
 UI.SettingsConfig:AddButton({
     Name = "Save slot",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected or orionActiveSlot)
-        if name == "" then return notify("Select a config first", 4) end
+        if name == "" then return notify("Select a config first", 4, true) end
         if orionSaveSlot(name) then
             orionSetActive(name)
-            notify("Saved " .. name, 3)
-        else notify("Could not save " .. name, 4) end
+            notify("Saved " .. name, 3, true)
+        else notify("Could not save " .. name, 4, true) end
     end
 })
 UI.SettingsConfig:AddButton({
     Name = "Load config",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
-        if name == "" then return notify("Select a config to load", 4) end
+        if name == "" then return notify("Select a config to load", 4, true) end
         if orionLoadSlot(name) then
             orionSetActive(name)
-            notify("Loaded config " .. name, 4)
-        else notify("Could not load config " .. name, 4) end
+            notify("Loaded config " .. name, 4, true)
+        else notify("Could not load config " .. name, 4, true) end
     end
 })
 UI.SettingsConfig:AddButton({
     Name = "Delete config",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
-        if name == "" then return notify("Select a config to delete", 4) end
-        if not orionDeleteSlot(name) then return notify("Could not delete config " .. name, 4) end
+        if name == "" then return notify("Select a config to delete", 4, true) end
+        if not orionDeleteSlot(name) then return notify("Could not delete config " .. name, 4, true) end
         orionRefreshSlotList()
         ConfigListSelected = nil
         if orionActiveSlot == name then orionSetActive(nil) end
-        notify("Deleted config " .. name, 4)
+        notify("Deleted config " .. name, 4, true)
     end
 })
 UI.SettingsConfig:AddToggle({
@@ -4800,9 +4821,9 @@ UI.SettingsConfig:AddToggle({
         orionAutosaveOn = Value == true
         if Value then
             orionSnapshotActive()
-            notify("Autosave on" .. (orionActiveSlot and (" for " .. orionActiveSlot) or ""), 3)
+            notify("Autosave on" .. (orionActiveSlot and (" for " .. orionActiveSlot) or ""), 3, true)
         else
-            notify("Autosave off", 3)
+            notify("Autosave off", 3, true)
         end
     end
 })
@@ -4817,11 +4838,12 @@ UI.SettingsConfig:AddButton({
     Name = "Set as autoload",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
-        if name == "" then return notify("Select a config first", 4) end
+        if name == "" then return notify("Select a config first", 4, true) end
+        orionEnsureFolder()
         local ok = orionSlotsUsable() and pcall(writefile, "ShijinHub/autoload.txt", name)
-        if not ok then return notify("Could not set autoload", 4) end
+        if not ok then return notify("Could not set autoload", 4, true) end
         ConfigAutoloadLabel:Set("Autoload: " .. name)
-        notify("Autoload set to " .. name, 4)
+        notify("Autoload set to " .. name, 4, true)
     end
 })
 UI.SettingsConfig:AddButton({
@@ -4829,7 +4851,7 @@ UI.SettingsConfig:AddButton({
     Callback = function()
         pcall(function() if isfile("ShijinHub/autoload.txt") then delfile("ShijinHub/autoload.txt") end end)
         ConfigAutoloadLabel:Set("Autoload: none")
-        notify("Autoload cleared", 4)
+        notify("Autoload cleared", 4, true)
     end
 })
 
@@ -5018,9 +5040,13 @@ end)
 pcall(function() OrionLib:Init() end)
 
 -- Named-slot autoload (separate from Orion's own per-game autoload above).
-pcall(function()
-    if orionSlotsUsable() and isfile("ShijinHub/autoload.txt") then
-        local name = orionCleanSlotName(readfile("ShijinHub/autoload.txt"))
-        if name ~= "" and orionLoadSlot(name) then orionSetActive(name) end
-    end
+-- Deferred so the window renders first; quiet apply, no popup spam.
+task.spawn(function()
+    orionEnsureFolder()
+    pcall(function()
+        if orionSlotsUsable() and isfile("ShijinHub/autoload.txt") then
+            local name = orionCleanSlotName(readfile("ShijinHub/autoload.txt"))
+            if name ~= "" and orionLoadSlot(name) then orionSetActive(name) end
+        end
+    end)
 end)
