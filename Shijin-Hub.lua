@@ -138,6 +138,8 @@ if not LocalPlayer:FindFirstChild("PlayerGui") then
 end
 
 local ScriptVersion = "0.0.1 Beta"
+-- Increment on every shipped change so testers can confirm what build runs.
+local ScriptBuild = 1
 local ScriptName = "Shijin Hub"
 
 -- ORION SOURCE: https://raw.githubusercontent.com/Snxdfer/back-ups-for-libs/refs/heads/main/Orion.lua
@@ -3669,22 +3671,7 @@ arTick = function()
         local relativeVelocity = velocity - rootPart.AssemblyLinearVelocity
         local closing = toPlayer.Magnitude > 0.1 and relativeVelocity:Dot(toPlayer.Unit) or 0
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
-        -- Closest-approach ETA: sample the gravity-bent trajectory and take
-        -- the time of nearest approach (cap 0.6s). Correct on arcs where the
-        -- old straight-line solve lied about fast-dipping balls.
-        local eta = math.huge
-        do
-            local bestD, bestT = math.huge, math.huge
-            local t = 0.05
-            while t <= 0.6 do
-                local q = entry.p.Position + velocity * t
-                q = Vector3.new(q.X, math.max(q.Y - 0.5 * arGravity * t * t, 0.3), q.Z)
-                local d = (q - rootPart.Position).Magnitude
-                if d < bestD then bestD, bestT = d, t end
-                t = t + 0.05
-            end
-            eta = bestT
-        end
+        local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.5) or math.huge
         local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.40
         local isTheirs = AutoRespectTeam and entry.claimT and nowS - entry.claimT < 1.0 and closing < 0
         if isTheirs then
@@ -3729,7 +3716,7 @@ arTick = function()
             if entry.d < farDistance then farDistance = entry.d end
         else
             local approachBonus = math.clamp(closing / math.max(speed, 1), -1, 1) * (fastIncoming and 0.34 or (frontRow and 0.20 or 0.08))
-            local timingBonus = fastIncoming and math.clamp((0.40 - eta) / 0.40, 0, 1) * 0.16 or 0
+            local timingBonus = fastIncoming and math.clamp((0.30 - eta) / 0.30, 0, 1) * 0.16 or 0
             local score = predD / range - approachBonus - timingBonus
             if score < targetScore or (score == targetScore and predD < targetDistance) then
                 target, targetDistance, targetRange, targetScore, targetFast = entry, predD, range, score, fastIncoming
@@ -4719,7 +4706,7 @@ pcall(function()
     updateKeyDetectorLabels()
 end)
 
-UI.SettingsInfo:AddLabel(ScriptName .. " v" .. ScriptVersion)
+UI.SettingsInfo:AddLabel(ScriptName .. " v" .. ScriptVersion .. " (build " .. tostring(ScriptBuild) .. ")")
 UI.SettingsInfo:AddLabel("UI Library: Orion")
 
 local HubDiagnostics = { sessionLabel = nil }
@@ -5153,7 +5140,7 @@ UI.SettingsActions:AddButton({
 
 ShijinBuilding = false
 notify("Shijin Hub v" .. ScriptVersion .. " ready", 6)
-print("[ShijinHub] v" .. ScriptVersion .. " loaded")
+print("[ShijinHub] v" .. ScriptVersion .. " build " .. tostring(ScriptBuild) .. " loaded")
 
 task.spawn(function()
     task.wait(2)
