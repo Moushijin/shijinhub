@@ -3441,6 +3441,8 @@ function FeatureConfig.autoReceive.isFrontRow(root)
 end
 local arFiredAt = {}
 local arLastFire = 0
+local arMoveGen = 0
+local arControlsCached = nil
 local arPingPeak = 0.05
 
 local psState, psStateT, psInfoT = "", 0, 0
@@ -3728,6 +3730,28 @@ arTick = function()
             gap = Vector3.new(gap.X, 0, gap.Z).Magnitude
             if gap > 4 and not (SpeedEnabled and SpeedValue > 0) then
                 local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
+                -- Takeover: if the player is steering, briefly yield their own
+                -- controls through the game's control switch so the walk order
+                -- takes effect, then hand control straight back. Newest fire
+                -- always owns the restore, so overlapping windows can't fight.
+                if humanoid.MoveDirection.Magnitude > 0.1 then
+                    if not arControlsCached then
+                        pcall(function()
+                            local pm = LocalPlayer.PlayerScripts:FindFirstChild("PlayerModule")
+                            arControlsCached = pm and require(pm):GetControls()
+                        end)
+                    end
+                    if arControlsCached then
+                        arMoveGen = arMoveGen + 1
+                        local gen = arMoveGen
+                        pcall(function() arControlsCached:Disable() end)
+                        task.delay(stepWindow, function()
+                            pcall(function()
+                                if gen == arMoveGen then arControlsCached:Enable() end
+                            end)
+                        end)
+                    end
+                end
                 pcall(function() humanoid:MoveTo(dest) end)
                 task.delay(stepWindow, function()
                     pcall(function()
