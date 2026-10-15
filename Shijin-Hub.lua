@@ -3693,24 +3693,13 @@ arTick = function()
                 or math.clamp(30 + speed * 0.27, 28, 72))
         local last = arFiredAt[entry.m]
         local cooldown = fastIncoming
-            and math.clamp(0.10 - math.clamp(speed / 300, 0, 1) * 0.05, 0.08, 0.15)
+            and math.clamp(0.04 - math.clamp(speed / 300, 0, 1) * 0.025, 0.01, 0.03)
             or (frontRow
-                and math.clamp(0.30 - math.clamp(speed / 250, 0, 1) * 0.10 + (entry.d / range) * 0.05, 0.25, 0.40)
-                or math.clamp(0.35 - math.clamp(speed / 220, 0, 1) * 0.10 + (entry.d / range) * 0.05, 0.30, 0.45))
-        local last = arFiredAt[entry.m]
-        if last then
-            local age = now - last.t
-            local dv = (last.v and (velocity - last.v).Magnitude) or math.huge
-            if age < cooldown then
-                gated = true
-            elseif age < 0.9 and not (dv > 12 and closing > 5 and age > 0.12) then
-                -- Same flight, already pressed: hold fire. A genuine re-hit
-                -- (velocity jumped, ball coming at us) earns a fresh press.
-                gated = true
-            end
-        end
-        if not gated then
-        if speed < AutoReceiveMinSpeed then
+                and math.clamp(0.08 - math.clamp(speed / 250, 0, 1) * 0.04 + (entry.d / range) * 0.03, 0.03, 0.10)
+                or math.clamp(0.14 - math.clamp(speed / 220, 0, 1) * 0.08 + (entry.d / range) * 0.05, 0.04, 0.17))
+        if last and now - last.t < cooldown then
+            gated = true
+        elseif speed < AutoReceiveMinSpeed then
             if entry.d < slowDistance then slowDistance = entry.d end
         elseif predD > range then
             if entry.d < farDistance then farDistance = entry.d end
@@ -3722,7 +3711,6 @@ arTick = function()
                 target, targetDistance, targetRange, targetScore, targetFast = entry, predD, range, score, fastIncoming
                 targetEta, targetSpeed = eta, speed
             end
-        end
         end
         end
     end
@@ -3788,7 +3776,7 @@ arTick = function()
         move = airborne and "JumpSet" or "Set"
     end
     local holdDuration = targetFast and math.clamp(targetEta + 0.12, 0.10, 0.25)
-        or (frontRow and 0.09 or 0.06)
+        or math.clamp(targetEta + 0.06, 0.06, 0.2)
     -- Fire while arrival is inside the forecast window; the hold is sized to
     -- still be down at contact, and short cooldowns keep coverage across it.
     if targetFast and targetEta > 0.40 then return end
