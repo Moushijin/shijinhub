@@ -3415,7 +3415,6 @@ hubConn(Players.PlayerRemoving, function(player)
 end)
 
 local AutoReceiveEnabled = false
-local AutoRespectTeam = true
 local AutoReceiveMode = "Set"
 local AutoReceiveMinSpeed = 50
 local AutoReceiveCount = 0
@@ -3523,34 +3522,6 @@ local function scanBalls(root)
                                 local newSpd = part.AssemblyLinearVelocity.Magnitude
                                 local spdJump = math.abs(newSpd - (entry.spd or newSpd))
                                 entry.spd = newSpd
-                                -- Teammate touch claim: a real hit (big velocity
-                                -- jump) next to a teammate marks their ball briefly.
-                                -- Enemy touches clear the claim instead.
-                                if AutoRespectTeam and spdJump > 25 then
-                                    pcall(function()
-                                        local bp = part.Position
-                                        local myTeam = getPlayerTeam(LocalPlayer)
-                                        local nearD, nearPl = 30, nil
-                                        for _, pl in ipairs(Players:GetPlayers()) do
-                                            if pl ~= LocalPlayer then
-                                                local ch = pl.Character
-                                                local rt = ch and ch:FindFirstChild("HumanoidRootPart")
-                                                if rt then
-                                                    local d = (rt.Position - bp).Magnitude
-                                                    if d < nearD then nearD, nearPl = d, pl end
-                                                end
-                                            end
-                                        end
-                                        if nearPl and myTeam then
-                                            local bt = getPlayerTeam(nearPl)
-                                            if bt and bt == myTeam then
-                                                entry.claimT = os.clock()
-                                            else
-                                                entry.claimT = nil
-                                            end
-                                        end
-                                    end)
-                                end
                                 local state = FeatureConfig.autoReceive
                                 if AutoReceiveEnabled and not state.reactionQueued then
                                     state.reactionQueued = true
@@ -3640,7 +3611,7 @@ arTick = function()
     end
     local target, targetDistance, targetRange, targetScore, targetFast = nil, math.huge, 0, math.huge, false
     local targetEta, targetSpeed = math.huge, 0
-    local slowDistance, farDistance, theirsDistance, gated = math.huge, math.huge, math.huge, false
+    local slowDistance, farDistance, gated = math.huge, math.huge, false
     -- Trajectory horizon: how far ahead we forecast each ball (ping + margin).
     local arPredictT = math.min(arPingComp + 0.12, 0.35)
     local arGravity = 196.2
@@ -3654,10 +3625,7 @@ arTick = function()
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
         local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.35) or math.huge
         local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.30
-        local isTheirs = AutoRespectTeam and entry.claimT and nowS - entry.claimT < 1.0 and closing < 0
-        if isTheirs then
-            if entry.d < theirsDistance then theirsDistance = entry.d end
-        elseif closing < -15 then
+        if closing < -15 then
             if entry.d < farDistance then farDistance = entry.d end
         else
         -- Very fast tilted/dunk-style balls get an anticipatory response window.
@@ -3706,8 +3674,6 @@ arTick = function()
             pushReceiveStatus("Waiting for closer ball", farDistance)
         elseif gated then
             pushReceiveStatus("Cooldown...")
-        elseif theirsDistance < math.huge then
-            pushReceiveStatus("Teammate's ball", theirsDistance)
         else
             pushReceiveStatus("Seeking")
         end
@@ -4091,17 +4057,6 @@ UI.ReceiveFeatures:AddBind({
     Callback = function()
         local t = OrionLib.Flags["AutoReceiveToggle"]
         if t then t:Set(not t.Value) end
-    end
-})
-UI.ReceiveFeatures:AddToggle({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Respect Teammate Touches",
-    Default = true,
-    Save = true,
-    Flag = "AutoRespectTeamToggle",
-    Callback = function(Value)
-        AutoRespectTeam = Value
-        notify(Value and "Teammate Respect ON" or "Teammate Respect OFF", 4)
     end
 })
 AutoReceiveStatusLabel = UI.ReceiveFeatures:AddLabel("State: OFF")
