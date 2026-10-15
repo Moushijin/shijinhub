@@ -1019,8 +1019,26 @@ hubConn(LocalPlayer.CharacterAdded, bindAutoCornerJump)
 
 local cameraTurnToken = 0
 
--- Auto Shiftlock: instant snap to camera direction on jump, held while airborne.
+-- Auto Shiftlock: engages the real shift-lock on jump (DevEnableMouseLock +
+-- a Shift tap) and releases on landing. Touch devices fall back to a
+-- one-time facing snap (no Shift key exists to tap there).
 local CameraJumpConns = {}
+local ShiftLockHeld = false
+local DevMouseLockPrev = nil
+local function tapShiftKey()
+    pcall(function()
+        local VIM = game:GetService("VirtualInputManager")
+        VIM:SendKeyEvent(true, Enum.KeyCode.LeftShift, false, game)
+        task.delay(0.08, function()
+            pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.LeftShift, false, game) end)
+        end)
+    end)
+end
+local function setShiftLockHeld(held)
+    if held == ShiftLockHeld then return end
+    ShiftLockHeld = held
+    tapShiftKey()
+end
 local function bindShiftlockSnap(character)
     for i = #CameraJumpConns, 1, -1 do
         safeDisconnect(CameraJumpConns[i])
@@ -1030,39 +1048,37 @@ local function bindShiftlockSnap(character)
     if not humanoid then return end
     local rootPart = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
     if not rootPart then return end
-    local lockedLook = nil
-    local holdConn = nil
-    local function stopHold()
-        lockedLook = nil
-        if holdConn then safeDisconnect(holdConn) holdConn = nil end
-    end
+    local noKeyboard = false
+    pcall(function()
+        noKeyboard = not game:GetService("UserInputService").KeyboardEnabled
+    end)
     CameraJumpConns[#CameraJumpConns + 1] = humanoid.StateChanged:Connect(function(_, newState)
-        if newState == Enum.HumanoidStateType.Freefall and CameraJumpEnabled and not ShijinUnloaded then
-            humanoid.AutoRotate = false
-            local cam = Workspace.CurrentCamera
-            if cam then
-                local look = cam.CFrame.LookVector
-                local flat = Vector3.new(look.X, 0, look.Z)
-                if flat.Magnitude > 0.01 then
-                    lockedLook = flat.Unit
-                    pcall(function()
-                        rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lockedLook)
-                    end)
-                end
-            end
-            if not holdConn then
-                holdConn = RunService.RenderStepped:Connect(function()
-                    if lockedLook then
+        if ShijinUnloaded or not CameraJumpEnabled then
+            setShiftLockHeld(false)
+            return
+        end
+        if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
+            if noKeyboard then
+                humanoid.AutoRotate = false
+                local cam = Workspace.CurrentCamera
+                if cam then
+                    local look = cam.CFrame.LookVector
+                    local flat = Vector3.new(look.X, 0, look.Z)
+                    if flat.Magnitude > 0.01 then
                         pcall(function()
-                            rootPart.CFrame = rootPart.CFrame:Lerp(CFrame.lookAt(rootPart.Position, rootPart.Position + lockedLook), 0.75)
+                            rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + flat.Unit)
                         end)
                     end
-                end)
-                CameraJumpConns[#CameraJumpConns + 1] = holdConn
+                end
+            else
+                setShiftLockHeld(true)
             end
         else
-            humanoid.AutoRotate = true
-            stopHold()
+            if noKeyboard then
+                humanoid.AutoRotate = true
+            else
+                setShiftLockHeld(false)
+            end
         end
     end)
 end
@@ -4252,6 +4268,17 @@ UI.MoveFeatures:AddToggle({
     Flag = "CameraJumpToggle",
     Callback = function(Value)
         CameraJumpEnabled = Value
+        if Value then
+            pcall(function()
+                if DevMouseLockPrev == nil then DevMouseLockPrev = LocalPlayer.DevEnableMouseLock end
+                LocalPlayer.DevEnableMouseLock = true
+            end)
+        else
+            setShiftLockHeld(false)
+            pcall(function()
+                if DevMouseLockPrev ~= nil then LocalPlayer.DevEnableMouseLock = DevMouseLockPrev end
+            end)
+        end
         notify(Value and "Auto Shiftlock Enabled" or "Auto Shiftlock Disabled")
     end
 })
@@ -4986,6 +5013,10 @@ local function shijinFullCleanup()
     speedChar, speedHum, speedRoot = nil, nil, nil
     DirectionalHitEnabled = false
     CameraJumpEnabled = false
+    pcall(setShiftLockHeld, false)
+    pcall(function()
+        if DevMouseLockPrev ~= nil then LocalPlayer.DevEnableMouseLock = DevMouseLockPrev end
+    end)
     pcall(function()
         local ch = LocalPlayer.Character
         local hum = ch and ch:FindFirstChildOfClass("Humanoid")
