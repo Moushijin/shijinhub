@@ -3601,7 +3601,8 @@ arTick = function()
     -- Spike-tracking peak: reacts to ping spikes immediately, decays slowly,
     -- so public users on jittery connections stay covered.
     arPingPeak = math.max(arPingSeconds, (arPingPeak or 0.05) - 0.004)
-    local arPingComp = math.max(arPingSeconds, arPingPeak)
+    -- Tuned for 80ms and below: the horizon never over-widens on spikes.
+    local arPingComp = math.min(0.08, math.max(arPingSeconds, arPingPeak))
     local balls = scanBalls(rootPart)
     if #balls == 0 then
         pushReceiveStatus("Seeking")
@@ -3795,7 +3796,7 @@ local UI = {}
 local Window = OrionLib:MakeWindow({
     Name = "◈ Shijin Hub",
     HidePremium = false,
-    SaveConfig = true,
+    SaveConfig = false,
     ConfigFolder = "ShijinHub",
     IntroEnabled = false,
     IntroText = "◈ Shijin Hub",
@@ -3805,18 +3806,20 @@ UI.Window = Window
 
 UI.Tabs = {
     Main = Window:MakeTab({ Name = "Main", Icon = "activity", PremiumOnly = false }),
-    Rage = Window:MakeTab({ Name = "Combat", Icon = "flame", PremiumOnly = false }),
+    Receive = Window:MakeTab({ Name = "Receive", Icon = "zap", PremiumOnly = false }),
+    TSH = Window:MakeTab({ Name = "TSH Run-Up", Icon = "wind", PremiumOnly = false }),
     Visuals = Window:MakeTab({ Name = "Visuals", Icon = "eye", PremiumOnly = false }),
     RestoreData = Window:MakeTab({ Name = "Data Rollback", Icon = "history", PremiumOnly = false }),
     Settings = Window:MakeTab({ Name = "Settings", Icon = "settings", PremiumOnly = false }),
 }
 
-UI.ReceiveFeatures = UI.Tabs.Main:AddSection({ Name = "Receive" })
+UI.ReceiveFeatures = UI.Tabs.Receive:AddSection({ Name = "Receive" })
 UI.ServeFeatures = UI.Tabs.Main:AddSection({ Name = "Serve" })
 UI.MoveFeatures = UI.Tabs.Main:AddSection({ Name = "Movement" })
 UI.MainVisuals = UI.Tabs.Visuals:AddSection({ Name = "Visual Features" })
-UI.RageFeatures = UI.Tabs.Rage:AddSection({ Name = "Ball Control" })
-UI.RageTech = UI.Tabs.Rage:AddSection({ Name = "Spike Tech" })
+UI.RageFeatures = UI.Tabs.Main:AddSection({ Name = "Ball Control" })
+UI.RageTech = UI.Tabs.Main:AddSection({ Name = "Spike Tech" })
+UI.TSHFeatures = UI.Tabs.TSH:AddSection({ Name = "TSH Run-Up" })
 UI.RestoreDataFeatures = UI.Tabs.RestoreData:AddSection({ Name = "Data Rollback" })
 UI.SettingsInfo = UI.Tabs.Settings:AddSection({ Name = "Information" })
 UI.SettingsKeys = UI.Tabs.Settings:AddSection({ Name = "Key Binds" })
@@ -4106,7 +4109,7 @@ UI.ServeFeatures:AddToggle({
     end
 })
 
-UI.ServeFeatures:AddToggle({
+UI.TSHFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "TSH Bar Lock",
     Default = false,
@@ -4117,7 +4120,7 @@ UI.ServeFeatures:AddToggle({
         notify(Value and "TSH Bar Lock ON" or "TSH Bar Lock OFF", 5)
     end
 })
-UI.ServeFeatures:AddBind({
+UI.TSHFeatures:AddBind({
     Name = "TSH Bar Lock Key",
     Default = Enum.KeyCode.T,
     Hold = false,
@@ -4128,7 +4131,7 @@ UI.ServeFeatures:AddBind({
         if t then t:Set(not t.Value) end
     end
 })
-UI.ServeFeatures:AddToggle({
+UI.TSHFeatures:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Require Run-Up Before Full Bar",
     Default = TSHBarLock.requireRunup,
@@ -4139,7 +4142,7 @@ UI.ServeFeatures:AddToggle({
         TSHBarLock.updateRunupGate(TSHBarLock.rawCharge)
     end
 })
-UI.ServeFeatures:AddSlider({
+UI.TSHFeatures:AddSlider({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Minimum Run-Up",
     Default = math.floor(TSHBarLock.minimumRunup * 100),
@@ -4681,6 +4684,9 @@ end
 local function orionSaveSlot(name)
     name = orionCleanSlotName(name)
     if name == "" or not orionSlotsUsable() then return false end
+    pcall(function()
+        if not isfile("ShijinHub") then makefolder("ShijinHub") end
+    end)
     local ok = pcall(function()
         writefile(orionSlotPath(name), OrionSlotService:JSONEncode(orionPackFlags()))
     end)
@@ -4803,6 +4809,9 @@ UI.SettingsConfig:AddButton({
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
         if name == "" then return notify("Select a config first", 4) end
+            pcall(function()
+                if not isfile("ShijinHub") then makefolder("ShijinHub") end
+            end)
             local ok = orionSlotsUsable() and pcall(writefile, "ShijinHub/autoload.txt", name)
         if not ok then return notify("Could not set autoload", 4) end
         ConfigAutoloadLabel:Set("Autoload: " .. name)
@@ -4887,6 +4896,13 @@ local function shijinFullCleanup()
     AutoReceiveEnabled = false
     pcall(function() if AutoReceiveConn then AutoReceiveConn:Disconnect() AutoReceiveConn = nil end end)
     pcall(function() if ballScanConn then ballScanConn:Disconnect() ballScanConn = nil end end)
+    pcall(function()
+        for part, conn in pairs(FeatureConfig.autoReceive.velocityConns) do
+            safeDisconnect(conn)
+            FeatureConfig.autoReceive.velocityConns[part] = nil
+        end
+    end)
+    ballCache = {}
     pcall(function() if charResetConn then charResetConn:Disconnect() charResetConn = nil end end)
     AutoCorner.enabled = false
     pcall(function() TSHBarLock.setEnabled(false) end)
