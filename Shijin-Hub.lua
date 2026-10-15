@@ -111,7 +111,7 @@ function VX.list()
     if not VX.on then
         for _, v in ipairs(Workspace:GetChildren()) do
             local n = v.Name
-            if type(n) == "string" and n:upper():find("BALL", 1, true) then
+            if type(n) == "string" and n:find("BALL", 1, true) then
                 VX.buf[#VX.buf + 1] = v
             end
         end
@@ -144,18 +144,7 @@ local ScriptName = "Shijin Hub"
 
 -- ORION SOURCE: https://raw.githubusercontent.com/Snxdfer/back-ups-for-libs/refs/heads/main/Orion.lua
 -- (verified genuine Orion Lib 2026-10-14: MakeWindow/MakeTab/AddSection, Toggle/Slider/Dropdown/Colorpicker/Bind/Textbox/Label/Button, MakeNotification, SaveConfig+Flags, Destroy)
-local OrionLib = nil
-for i = 1, 3 do
-    pcall(function()
-        local body = game:HttpGet("https://raw.githubusercontent.com/Snxdfer/back-ups-for-libs/refs/heads/main/Orion.lua")
-        if type(body) == "string" and #body > 10000 then
-            OrionLib = loadstring(body)()
-        end
-    end)
-    if OrionLib then break end
-    task.wait(1)
-end
-assert(OrionLib, "Shijin Hub: could not download the UI library.")
+local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Snxdfer/back-ups-for-libs/refs/heads/main/Orion.lua"))()
 local Library = OrionLib -- compat alias for the hub-loaded guard below
 local Options = OrionLib.Flags
 
@@ -222,9 +211,8 @@ local FeatureConfig = {
     performanceLevel = "Balanced",
     performanceYieldEvery = 320,
 }
-local function notify(message, lifetime, force)
-    if ShijinUnloaded or ShijinBuilding then return end
-    if not force and not FeatureConfig.notifications then return end
+local function notify(message, lifetime)
+    if ShijinUnloaded or ShijinBuilding or not FeatureConfig.notifications then return end
     pcall(function()
         OrionLib:MakeNotification({
             Name = "◈ Shijin Hub",
@@ -488,7 +476,7 @@ end
 local function pressDetectedMove(moveName, holdDuration)
     if ShijinUnloaded then return end
     local VIM = game:GetService("VirtualInputManager")
-    local hold = math.clamp(tonumber(holdDuration) or 0.05, 0.02, 0.30)
+    local hold = math.clamp(tonumber(holdDuration) or 0.03, 0.015, 0.20)
     local kc, it
     if moveName == "JumpSet" then kc, it = KeyDetectorJumpSetKeyCode, KeyDetectorJumpSetInputType
     else kc, it = KeyDetectorSetKeyCode, KeyDetectorSetInputType end
@@ -3436,7 +3424,7 @@ local AutoReceiveInfoLabel = nil
 local AutoReceiveConn = nil
 local arTick
 
-local ballCache, ballCacheT, ballScanConn, deepScanT = {}, -10, nil, -10
+local ballCache, ballCacheT, ballScanConn = {}, -10, nil
 FeatureConfig.autoReceive = { net = nil, netT = -10, velocityConns = {}, reactionQueued = false }
 function FeatureConfig.autoReceive.isFrontRow(root)
     if not root then return false end
@@ -3498,12 +3486,12 @@ local function fireAutoReceive(move, holdDuration)
 end
 local function scanBalls(root)
     local nowS = os.clock()
-    if nowS - ballCacheT > 0.25 then
+    if nowS - ballCacheT > 0.02 then
         ballCacheT = nowS
         local found = VX.scanFound
         VX.clear(found)
-        local function consider(v)
-            if ((v:IsA("Model") or v:IsA("BasePart")) and type(v.Name) == "string" and v.Name:upper():find("BALL", 1, true)) then
+        for _, v in ipairs(VX.list()) do
+            if v:IsA("Model") and v.Name:find("CLIENT_BALL", 1, true) then
                 found[v] = true
                 local entry = ballCache[v]
                 if not entry or not entry.p or not entry.p.Parent then
@@ -3511,7 +3499,7 @@ local function scanBalls(root)
                         safeDisconnect(entry.vc)
                         if entry.p then FeatureConfig.autoReceive.velocityConns[entry.p] = nil end
                     end
-                    local part = (v:IsA("BasePart") and v) or v:FindFirstChildWhichIsA("BasePart")
+                    local part = v:FindFirstChildWhichIsA("BasePart")
                     if part and part.Name == "ExtendedHitbox" then
                         part = nil
                     end
@@ -3580,13 +3568,6 @@ local function scanBalls(root)
                     end
                 end
             end
-        end
-        for _, sv in ipairs(VX.list()) do consider(sv) end
-        -- Deep discovery (throttled): balls nested in folders/models, any
-        -- casing. The top-level scan above misses those entirely.
-        if not next(found) and nowS - (deepScanT or -10) > 0.5 then
-            deepScanT = nowS
-            for _, dv in ipairs(Workspace:GetDescendants()) do consider(dv) end
         end
         for m, stale in pairs(ballCache) do
             if not found[m] then
@@ -3686,7 +3667,6 @@ arTick = function()
         local predPos = entry.p.Position + velocity * arPredictT
             + Vector3.new(0, -0.5 * arGravity * arPredictT * arPredictT, 0)
         local predD = (predPos - rootPart.Position).Magnitude
-        entry.predPos = predPos
         local range = fastIncoming and (frontRow and math.clamp(46 + speed * 0.22, 42, 100)
             or math.clamp(40 + speed * 0.20, 36, 84))
             or (frontRow and math.clamp(36 + speed * 0.30, 34, 90)
@@ -3785,53 +3765,6 @@ arTick = function()
     arLastFireVel = target.p.AssemblyLinearVelocity
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
-        -- Step-in window follows the press: hold + margin, bounded so a slow
-        -- ball costs little control and a fast ball gets the full run.
-        local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
-        -- Step-in through the humanoid itself: real WalkSpeed (style speed),
-        -- smooth and server-friendly. Skipped when already on the ball, while
-        -- you steer, or while the hub's own Speed feature is driving.
-        if humanoid.MoveDirection.Magnitude < 0.1 and not (SpeedEnabled and SpeedValue > 0) then
-            local dest = target.predPos or target.p.Position
-            dest = Vector3.new(dest.X, rootPart.Position.Y, dest.Z)
-            local gap = (dest - rootPart.Position)
-            gap = Vector3.new(gap.X, 0, gap.Z).Magnitude
-            if gap > 4 then
-                local gravNow = 196.2
-                pcall(function() gravNow = Workspace.Gravity end)
-                pcall(function() humanoid:MoveTo(dest) end)
-                local t0 = os.clock()
-                local watch
-                watch = RunService.Heartbeat:Connect(function()
-                    local stop = (not AutoReceiveEnabled) or ShijinUnloaded
-                        or (os.clock() - t0) > stepWindow
-                        or (not humanoid.Parent) or humanoid.Health <= 0
-                        or humanoid.MoveDirection.Magnitude > 0.1
-                    if stop then
-                        pcall(function() watch:Disconnect() end)
-                        pcall(function()
-                            if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
-                                local r = char and char:FindFirstChild("HumanoidRootPart")
-                                if r then humanoid:MoveTo(r.Position) end
-                            end
-                        end)
-                        return
-                    end
-                    -- Live re-prediction: keep walking at the moving forecast
-                    -- so curves and fast balls don't outdate the target.
-                    local bp = target.p
-                    if bp and bp.Parent then
-                        local stepT = 0.3
-                        local bv = bp.AssemblyLinearVelocity
-                        local q = bp.Position + bv * stepT
-                        q = Vector3.new(q.X, math.max(q.Y - 0.5 * gravNow * stepT * stepT, 0.5), q.Z)
-                        pcall(function()
-                            humanoid:MoveTo(Vector3.new(q.X, rootPart.Position.Y, q.Z))
-                        end)
-                    end
-                end)
-            end
-        end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
         pushReceiveStatus("Pressed " .. move .. suffix, targetDistance)
@@ -3864,10 +3797,7 @@ local function setAutoReceiveEnabled(state)
         AutoReceiveCount = 0
         if not ballScanConn then
             ballScanConn = Workspace.ChildAdded:Connect(function(ch)
-                if ch:IsA("Model") or ch:IsA("BasePart") then
-                    local n = ch.Name
-                    if type(n) == "string" and n:upper():find("BALL", 1, true) then ballCacheT = -10 end
-                end
+                if ch:IsA("Model") or ch:IsA("BasePart") then ballCacheT = -10 end
             end)
         end
         if AutoReceiveConn then
@@ -3961,7 +3891,7 @@ UI.RageFeatures:AddToggle({
     end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Hitbox Size",
     Default = 10,
     Min = 0,
@@ -3980,7 +3910,7 @@ UI.RageFeatures:AddColorpicker({
     Callback = function(Value) HitboxColor = Value end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Hitbox Transparency",
     Default = 80,
     Min = 40,
@@ -3992,7 +3922,7 @@ UI.RageFeatures:AddSlider({
     Callback = function(Value) HitboxTransparency = Value / 100 end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Hitbox Range",
     Default = FeatureConfig.hitboxMaxDistance,
     Min = 20,
@@ -4004,7 +3934,7 @@ UI.RageFeatures:AddSlider({
     Callback = function(Value) FeatureConfig.hitboxMaxDistance = Value end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Hitbox Refresh",
     Default = FeatureConfig.hitboxUpdateRate,
     Min = 0.03,
@@ -4048,7 +3978,7 @@ UI.RageTech:AddBind({
     end
 })
 UI.RageTech:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Counter Range",
     Default = FeatureConfig.autoSpike.range,
     Min = 12,
@@ -4068,7 +3998,7 @@ UI.RageTech:AddBind({
     Callback = function() end
 })
 UI.RageTech:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Minimum Incoming Speed",
     Default = FeatureConfig.autoSpike.minIncomingSpeed,
     Min = 1,
@@ -4179,7 +4109,7 @@ AutoReceiveInfoLabel = UI.ReceiveFeatures:AddLabel("Ball: --st  |  Received: 0")
 do
     KeyDetectorSetLabel = UI.ReceiveFeatures:AddLabel("Set Key: [Q]")
     local SetBind = UI.ReceiveFeatures:AddBind({
-        Color = Color3.fromRGB(167, 139, 250),
+        Color = Color3.fromRGB(244, 63, 94),
         Name = "Receive Key",
         Default = Enum.KeyCode.Q,
         Hold = false,
@@ -4205,7 +4135,7 @@ do
     end
 end
 UI.ReceiveFeatures:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Ignore Ball Speeds Under",
     Default = AutoReceiveMinSpeed,
     Min = 0,
@@ -4273,7 +4203,7 @@ UI.ServeFeatures:AddToggle({
     end
 })
 UI.ServeFeatures:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Minimum Run-Up",
     Default = math.floor(TSHBarLock.minimumRunup * 100),
     Min = 0,
@@ -4314,7 +4244,7 @@ UI.MainVisuals:AddToggle({
     end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Prediction Length",
     Default = PredictAimLength,
     Min = 0,
@@ -4333,7 +4263,7 @@ UI.MainVisuals:AddColorpicker({
     Callback = function(Value) PredictAimColor = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Prediction Thickness",
     Default = FeatureConfig.predictAimThickness,
     Min = 0.05,
@@ -4344,7 +4274,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.predictAimThickness = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Prediction Transparency",
     Default = FeatureConfig.predictAimTransparency,
     Min = 0,
@@ -4355,7 +4285,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.predictAimTransparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Prediction Range",
     Default = FeatureConfig.predictAimMaxDistance,
     Min = 50,
@@ -4403,7 +4333,7 @@ UI.MainVisuals:AddColorpicker({
     Callback = function(Value) BallESP.landColor = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Path Transparency",
     Default = 0.55,
     Min = 0,
@@ -4414,7 +4344,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.transparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Landing Circle Size",
     Default = 7,
     Min = 2,
@@ -4426,7 +4356,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.circleSize = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Gravity Tune",
     Default = 1,
     Min = 0.5,
@@ -4456,7 +4386,7 @@ UI.MainVisuals:AddToggle({
     end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Ball Minimum Speed",
     Default = BallESP.minSpeed,
     Min = 0,
@@ -4468,7 +4398,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.minSpeed = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Ball ESP Range",
     Default = BallESP.maxDistance,
     Min = 50,
@@ -4480,7 +4410,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) BallESP.maxDistance = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Trajectory Maximum Time",
     Default = BALL_ESP_MAX_T,
     Min = 1,
@@ -4517,7 +4447,7 @@ UI.MainVisuals:AddToggle({
     end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Ghost Refresh Rate",
     Default = FeatureConfig.streamerRefreshRate,
     Min = 0.5,
@@ -4550,7 +4480,7 @@ UI.MainVisuals:AddColorpicker({
     Callback = function(Value) JumpESPColor = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Jump Tracker Fill Transparency",
     Default = FeatureConfig.jumpEspFillTransparency,
     Min = 0,
@@ -4561,7 +4491,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.jumpEspFillTransparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Jump Tracker Outline Transparency",
     Default = FeatureConfig.jumpEspOutlineTransparency,
     Min = 0,
@@ -4572,7 +4502,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.jumpEspOutlineTransparency = Value end
 })
 UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Jump Tracker Range",
     Default = FeatureConfig.jumpEspMaxDistance,
     Min = 50,
@@ -4648,7 +4578,7 @@ UI.SettingsProtection:AddToggle({
     Callback = function(Value) FeatureConfig.notifications = Value end
 })
 UI.SettingsProtection:AddSlider({
-    Color = Color3.fromRGB(167, 139, 250),
+    Color = Color3.fromRGB(244, 63, 94),
     Name = "Notification Duration",
     Default = FeatureConfig.notificationLifetime,
     Min = 1,
@@ -4811,17 +4741,9 @@ local function orionApplyFlags(data)
     end
     return true
 end
-local function orionEnsureFolder()
-    if not orionSlotsUsable() then return false end
-    pcall(function()
-        if not isfile("ShijinHub") then makefolder("ShijinHub") end
-    end)
-    return true
-end
 local function orionSaveSlot(name)
     name = orionCleanSlotName(name)
     if name == "" or not orionSlotsUsable() then return false end
-    orionEnsureFolder()
     local ok = pcall(function()
         writefile(orionSlotPath(name), OrionSlotService:JSONEncode(orionPackFlags()))
     end)
@@ -4837,12 +4759,7 @@ local function orionLoadSlot(name)
     if type(body) ~= "string" or body == "" then return false end
     local data = nil
     pcall(function() data = OrionSlotService:JSONDecode(body) end)
-    -- Quiet apply: restored flags must not each fire their own popup.
-    local wasBuilding = ShijinBuilding
-    ShijinBuilding = true
-    local applied = orionApplyFlags(data)
-    ShijinBuilding = wasBuilding
-    return applied
+    return orionApplyFlags(data)
 end
 local function orionDeleteSlot(name)
     name = orionCleanSlotName(name)
@@ -4861,10 +4778,10 @@ local function orionRefreshSlotList()
     return names
 end
 
-local uxoConfigName = ""
+local uxoConfigName = "config"
 UI.SettingsConfig:AddTextbox({
     Name = "Config name",
-    Default = "",
+    Default = "config",
     TextDisappear = false,
     Callback = function(Value)
         uxoConfigName = tostring(Value or "")
@@ -4893,47 +4810,48 @@ UI.SettingsConfig:AddButton({
     Name = "Create config",
     Callback = function()
         local name = orionCleanSlotName(uxoConfigName)
-        if name == "" then return notify("Type a config name first", 4, true) end
-        if not orionSaveSlot(name) then return notify("Could not save config " .. name, 4, true) end
+        if name == "" then return notify("Type a config name first", 4) end
+        if not orionSaveSlot(name) then return notify("Could not save config " .. name, 4) end
         orionRefreshSlotList()
         pcall(function() OrionLib.Flags["ConfigList"]:Set(name) end)
         ConfigListSelected = name
         orionSetActive(name)
-        notify("Saved config " .. name, 4, true)
+        notify("Saved config " .. name, 4)
     end
 })
-UI.SettingsConfig:AddButton({
-    Name = "Save slot",
-    Callback = function()
-        local name = orionCleanSlotName(ConfigListSelected or orionActiveSlot)
-        if name == "" then return notify("Select a config first", 4, true) end
-        if orionSaveSlot(name) then
-            orionSetActive(name)
-            notify("Saved " .. name, 3, true)
-        else notify("Could not save " .. name, 4, true) end
-    end
-})
+
 UI.SettingsConfig:AddButton({
     Name = "Load config",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
-        if name == "" then return notify("Select a config to load", 4, true) end
+        if name == "" then return notify("Select a config to load", 4) end
         if orionLoadSlot(name) then
             orionSetActive(name)
-            notify("Loaded config " .. name, 4, true)
-        else notify("Could not load config " .. name, 4, true) end
+            notify("Loaded config " .. name, 4)
+        else notify("Could not load config " .. name, 4) end
     end
 })
 UI.SettingsConfig:AddButton({
     Name = "Delete config",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
-        if name == "" then return notify("Select a config to delete", 4, true) end
-        if not orionDeleteSlot(name) then return notify("Could not delete config " .. name, 4, true) end
+        if name == "" then return notify("Select a config to delete", 4) end
+        if not orionDeleteSlot(name) then return notify("Could not delete config " .. name, 4) end
         orionRefreshSlotList()
         ConfigListSelected = nil
         if orionActiveSlot == name then orionSetActive(nil) end
-        notify("Deleted config " .. name, 4, true)
+        notify("Deleted config " .. name, 4)
+    end
+})
+UI.SettingsConfig:AddButton({
+    Name = "Save slot",
+    Callback = function()
+        local name = orionCleanSlotName(ConfigListSelected or orionActiveSlot)
+        if name == "" then return notify("Select a config first", 4) end
+        if orionSaveSlot(name) then
+            orionSetActive(name)
+            notify("Saved " .. name, 3)
+        else notify("Could not save " .. name, 4) end
     end
 })
 local ConfigAutoloadLabel = UI.SettingsConfig:AddLabel("Autoload: none")
@@ -4947,12 +4865,11 @@ UI.SettingsConfig:AddButton({
     Name = "Set as autoload",
     Callback = function()
         local name = orionCleanSlotName(ConfigListSelected)
-        if name == "" then return notify("Select a config first", 4, true) end
-        orionEnsureFolder()
-        local ok = orionSlotsUsable() and pcall(writefile, "ShijinHub/autoload.txt", name)
-        if not ok then return notify("Could not set autoload", 4, true) end
+        if name == "" then return notify("Select a config first", 4) end
+            local ok = orionSlotsUsable() and pcall(writefile, "ShijinHub/autoload.txt", name)
+        if not ok then return notify("Could not set autoload", 4) end
         ConfigAutoloadLabel:Set("Autoload: " .. name)
-        notify("Autoload set to " .. name, 4, true)
+        notify("Autoload set to " .. name, 4)
     end
 })
 UI.SettingsConfig:AddButton({
@@ -4960,7 +4877,7 @@ UI.SettingsConfig:AddButton({
     Callback = function()
         pcall(function() if isfile("ShijinHub/autoload.txt") then delfile("ShijinHub/autoload.txt") end end)
         ConfigAutoloadLabel:Set("Autoload: none")
-        notify("Autoload cleared", 4, true)
+        notify("Autoload cleared", 4)
     end
 })
 
@@ -5030,9 +4947,9 @@ local function shijinFullCleanup()
     pcall(function() restoreJumpBoost() end)
     pcall(function() if JumpBoostConn then JumpBoostConn:Disconnect() JumpBoostConn = nil end end)
     JumpBoostLastApply = 0
-    -- Full power-down: run the real disable path so listeners, caches and
-    -- the step-in watcher all release instead of leaking past unload.
-    pcall(setAutoReceiveEnabled, false)
+    AutoReceiveEnabled = false
+    pcall(function() if AutoReceiveConn then AutoReceiveConn:Disconnect() AutoReceiveConn = nil end end)
+    pcall(function() if ballScanConn then ballScanConn:Disconnect() ballScanConn = nil end end)
     pcall(function() if charResetConn then charResetConn:Disconnect() charResetConn = nil end end)
     AutoCorner.enabled = false
     pcall(function() TSHBarLock.setEnabled(false) end)
@@ -5132,13 +5049,9 @@ end)
 pcall(function() OrionLib:Init() end)
 
 -- Named-slot autoload (separate from Orion's own per-game autoload above).
--- Deferred so the window renders first; quiet apply, no popup spam.
-task.spawn(function()
-    orionEnsureFolder()
-    pcall(function()
-        if orionSlotsUsable() and isfile("ShijinHub/autoload.txt") then
-            local name = orionCleanSlotName(readfile("ShijinHub/autoload.txt"))
-            if name ~= "" and orionLoadSlot(name) then orionSetActive(name) end
-        end
-    end)
+pcall(function()
+    if orionSlotsUsable() and isfile("ShijinHub/autoload.txt") then
+        local name = orionCleanSlotName(readfile("ShijinHub/autoload.txt"))
+        if name ~= "" and orionLoadSlot(name) then orionSetActive(name) end
+    end
 end)
