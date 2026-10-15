@@ -3441,8 +3441,6 @@ function FeatureConfig.autoReceive.isFrontRow(root)
 end
 local arFiredAt = {}
 local arLastFire = 0
-local arNeedReset = false
-local arLastFireVel = nil
 local arPingPeak = 0.05
 
 local psState, psStateT, psInfoT = "", 0, 0
@@ -3689,20 +3687,6 @@ arTick = function()
             return
         end
     end
-    -- One press per approach, identity-free: after firing, hold everything
-    -- until the ball actually leaves. A genuine re-hit earns a fresh press.
-    if arNeedReset then
-        local tv = target.p.AssemblyLinearVelocity
-        local dvAll = arLastFireVel and (tv - arLastFireVel).Magnitude or math.huge
-        if targetDistance > 35 then
-            arNeedReset = false
-        elseif dvAll > 25 and (now - arLastFire) > 0.12 then
-            arNeedReset = false
-        else
-            pushReceiveStatus("Waiting...", targetDistance)
-            return
-        end
-    end
     local globalGap = targetFast
         and math.clamp(0.01 + (targetDistance / targetRange) * 0.01, 0.01, 0.02)
         or (frontRow
@@ -3727,8 +3711,6 @@ arTick = function()
     -- still be down at contact, and short cooldowns keep coverage across it.
     if targetFast and targetEta > 0.30 then return end
     arLastFire = now
-    arNeedReset = true
-    arLastFireVel = target.p.AssemblyLinearVelocity
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
         AutoReceiveCount = AutoReceiveCount + 1
