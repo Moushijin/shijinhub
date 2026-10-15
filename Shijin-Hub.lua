@@ -3621,10 +3621,13 @@ arTick = function()
         local toPlayer = rootPart.Position - entry.p.Position
         local relativeVelocity = velocity - rootPart.AssemblyLinearVelocity
         local closing = toPlayer.Magnitude > 0.1 and relativeVelocity:Dot(toPlayer.Unit) or 0
+        -- World-frame approach: your own sprint must never veto a ball that is
+        -- physically still coming at your spot.
+        local worldClosing = toPlayer.Magnitude > 0.1 and velocity:Dot(toPlayer.Unit) or 0
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
         local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.35) or math.huge
-        local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.30
-        if closing < -15 then
+        local fastIncoming = speed >= 85 and worldClosing >= 15 and eta <= 0.30
+        if worldClosing < -15 then
             if entry.d < farDistance then farDistance = entry.d end
         else
         -- Very fast tilted/dunk-style balls get an anticipatory response window.
