@@ -3441,8 +3441,7 @@ function FeatureConfig.autoReceive.isFrontRow(root)
 end
 local arFiredAt = {}
 local arLastFire = 0
-local arMoveGen = 0
-local arControlsCached = nil
+local arMoving = false
 local arPingPeak = 0.05
 
 local psState, psStateT, psInfoT = "", 0, 0
@@ -3672,6 +3671,13 @@ arTick = function()
         or humanoid.FloorMaterial == Enum.Material.Air
         or math.abs(rootPart.AssemblyLinearVelocity.Y) > 3
     if not target then
+        if arMoving and humanoid.MoveDirection.Magnitude < 0.1 then
+            arMoving = false
+            pcall(function()
+                local r = char and char:FindFirstChild("HumanoidRootPart")
+                if r then humanoid:MoveTo(r.Position) end
+            end)
+        end
         if slowDistance < math.huge then
             pushReceiveStatus("Waiting for ball speed", slowDistance)
         elseif farDistance < math.huge then
@@ -3703,6 +3709,39 @@ arTick = function()
             return
         end
     end
+    -- Positioning: walk the forecast continuously while tracking, so we
+    -- are already there at fire time. Idle and grounded only; steering
+    -- always wins and no keys are ever touched.
+    local faceDest = target.predPos or target.p.Position
+    faceDest = Vector3.new(faceDest.X, rootPart.Position.Y, faceDest.Z)
+    if humanoid.MoveDirection.Magnitude < 0.1
+        and humanoid.FloorMaterial ~= Enum.Material.Air
+        and not (SpeedEnabled and SpeedValue > 0) then
+        local dest = faceDest
+        local gap = dest - rootPart.Position
+        gap = Vector3.new(gap.X, 0, gap.Z).Magnitude
+        if gap > 4 then
+            pcall(function() humanoid:MoveTo(dest) end)
+            arMoving = true
+        else
+            arMoving = false
+        end
+    else
+        arMoving = false
+    end
+    -- Smooth facing: ease Y-rotation toward the live forecast every tick.
+    -- Gentle enough to read as turning (never a snap), runs idle or
+    -- steering, rotation only, zero displacement.
+    do
+        local to = faceDest - rootPart.Position
+        to = Vector3.new(to.X, 0, to.Z)
+        if to.Magnitude > 1 then
+            pcall(function()
+                local cur = rootPart.CFrame
+                rootPart.CFrame = cur:Lerp(CFrame.lookAt(cur.Position, cur.Position + to.Unit), 0.15)
+            end)
+        end
+    end
     local globalGap = targetFast
         and math.clamp(0.01 + (targetDistance / targetRange) * 0.01, 0.01, 0.02)
         or (frontRow
@@ -3729,50 +3768,6 @@ arTick = function()
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
-        -- Micro-movement: walk at the predicted contact on every receive, so
-        -- the character is both positioned and facing the ball. Humanoid
-        -- walking only (style speed, zero forced displacement) - held keys
-        -- always win over MoveTo, so this never fights your input.
-        do
-            local dest = target.predPos or target.p.Position
-            dest = Vector3.new(dest.X, rootPart.Position.Y, dest.Z)
-            local gap = dest - rootPart.Position
-            gap = Vector3.new(gap.X, 0, gap.Z).Magnitude
-            if gap > 4 and not (SpeedEnabled and SpeedValue > 0) then
-                local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
-                -- Takeover: if the player is steering, briefly yield their own
-                -- controls through the game's control switch so the walk order
-                -- takes effect, then hand control straight back. Newest fire
-                -- always owns the restore, so overlapping windows can't fight.
-                if humanoid.MoveDirection.Magnitude > 0.1 then
-                    if not arControlsCached then
-                        pcall(function()
-                            local pm = LocalPlayer.PlayerScripts:FindFirstChild("PlayerModule")
-                            arControlsCached = pm and require(pm):GetControls()
-                        end)
-                    end
-                    if arControlsCached then
-                        arMoveGen = arMoveGen + 1
-                        local gen = arMoveGen
-                        pcall(function() arControlsCached:Disable() end)
-                        task.delay(stepWindow, function()
-                            pcall(function()
-                                if gen == arMoveGen then arControlsCached:Enable() end
-                            end)
-                        end)
-                    end
-                end
-                pcall(function() humanoid:MoveTo(dest) end)
-                task.delay(stepWindow, function()
-                    pcall(function()
-                        if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
-                            local r = char and char:FindFirstChild("HumanoidRootPart")
-                            if r then humanoid:MoveTo(r.Position) end
-                        end
-                    end)
-                end)
-            end
-        end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
         pushReceiveStatus("Pressed " .. move .. suffix, targetDistance)
