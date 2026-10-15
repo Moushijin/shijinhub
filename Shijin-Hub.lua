@@ -3429,7 +3429,7 @@ end)
 local AutoReceiveEnabled = false
 local AutoRespectTeam = true
 local AutoReceiveMode = "Set"
-local AutoReceiveMinSpeed = 15
+local AutoReceiveMinSpeed = 50
 local AutoReceiveCount = 0
 local AutoReceiveStatusLabel = nil
 local AutoReceiveInfoLabel = nil
@@ -3641,17 +3641,6 @@ arTick = function()
         pushReceiveStatus("Lobby")
         return
     end
-    local arPingSeconds = 0.05
-    pcall(function()
-        local item = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
-        if item then
-            arPingSeconds = math.clamp((tonumber(item:GetValue()) or 50) / 1000, 0, 0.2)
-        end
-    end)
-    -- Spike-tracking peak: reacts to ping spikes immediately, decays slowly,
-    -- so public users on jittery connections stay covered.
-    arPingPeak = math.max(arPingSeconds, (arPingPeak or 0.05) - 0.004)
-    local arPingComp = math.max(arPingSeconds, arPingPeak)
     local balls = scanBalls(rootPart)
     if #balls == 0 then
         pushReceiveStatus("Seeking")
@@ -3660,8 +3649,6 @@ arTick = function()
     local target, targetDistance, targetRange, targetScore, targetFast = nil, math.huge, 0, math.huge, false
     local targetEta, targetSpeed = math.huge, 0
     local slowDistance, farDistance, theirsDistance, gated = math.huge, math.huge, math.huge, false
-    -- Trajectory horizon: how far ahead we forecast each ball (ping + margin).
-    local arPredictT = math.min(arPingComp + 0.20, 0.50)
     local arGravity = 196.2
     pcall(function() arGravity = Workspace.Gravity end)
     for _, entry in ipairs(balls) do
@@ -3671,8 +3658,8 @@ arTick = function()
         local relativeVelocity = velocity - rootPart.AssemblyLinearVelocity
         local closing = toPlayer.Magnitude > 0.1 and relativeVelocity:Dot(toPlayer.Unit) or 0
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
-        local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.5) or math.huge
-        local fastIncoming = speed >= 85 and closing >= 15 and eta <= 0.40
+        local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.35) or math.huge
+        local fastIncoming = speed >= 110 and closing >= 20 and eta <= 0.30
         local isTheirs = AutoRespectTeam and entry.claimT and nowS - entry.claimT < 1.0 and closing < 0
         if isTheirs then
             if entry.d < theirsDistance then theirsDistance = entry.d end
@@ -3681,34 +3668,28 @@ arTick = function()
         else
         -- Very fast tilted/dunk-style balls get an anticipatory response window.
         -- The normal local input is still used; this only prioritizes timing.
-        -- Trajectory forecast: judge the ball where physics says it will be
-        -- when the press lands (handles curve/dip, not just straight lines).
-        local predPos = entry.p.Position + velocity * arPredictT
-            + Vector3.new(0, -0.5 * arGravity * arPredictT * arPredictT, 0)
-        local predD = (predPos - rootPart.Position).Magnitude
-        entry.predPos = predPos
-        local range = fastIncoming and (frontRow and math.clamp(46 + speed * 0.22, 42, 100)
-            or math.clamp(40 + speed * 0.20, 36, 84))
-            or (frontRow and math.clamp(36 + speed * 0.30, 34, 90)
-                or math.clamp(30 + speed * 0.27, 28, 72))
+        local range = fastIncoming and (frontRow and math.clamp(42 + speed * 0.18, 42, 78)
+            or math.clamp(36 + speed * 0.17, 36, 70))
+            or (frontRow and math.clamp(30 + speed * 0.25, 30, 78)
+                or math.clamp(24 + speed * 0.22, 24, 62))
         local last = arFiredAt[entry.m]
         local cooldown = fastIncoming
-            and math.clamp(0.04 - math.clamp(speed / 300, 0, 1) * 0.025, 0.01, 0.03)
+            and math.clamp(0.07 - math.clamp(speed / 300, 0, 1) * 0.03, 0.035, 0.07)
             or (frontRow
-                and math.clamp(0.08 - math.clamp(speed / 250, 0, 1) * 0.04 + (entry.d / range) * 0.03, 0.03, 0.10)
-                or math.clamp(0.14 - math.clamp(speed / 220, 0, 1) * 0.08 + (entry.d / range) * 0.05, 0.04, 0.17))
+                and math.clamp(0.105 - math.clamp(speed / 250, 0, 1) * 0.05 + (entry.d / range) * 0.035, 0.045, 0.13)
+                or math.clamp(0.18 - math.clamp(speed / 220, 0, 1) * 0.10 + (entry.d / range) * 0.06, 0.06, 0.22))
         if last and now - last.t < cooldown then
             gated = true
         elseif speed < AutoReceiveMinSpeed then
             if entry.d < slowDistance then slowDistance = entry.d end
-        elseif predD > range then
+        elseif entry.d > range then
             if entry.d < farDistance then farDistance = entry.d end
         else
             local approachBonus = math.clamp(closing / math.max(speed, 1), -1, 1) * (fastIncoming and 0.34 or (frontRow and 0.20 or 0.08))
             local timingBonus = fastIncoming and math.clamp((0.30 - eta) / 0.30, 0, 1) * 0.16 or 0
-            local score = predD / range - approachBonus - timingBonus
-            if score < targetScore or (score == targetScore and predD < targetDistance) then
-                target, targetDistance, targetRange, targetScore, targetFast = entry, predD, range, score, fastIncoming
+            local score = entry.d / range - approachBonus - timingBonus
+            if score < targetScore or (score == targetScore and entry.d < targetDistance) then
+                target, targetDistance, targetRange, targetScore, targetFast = entry, entry.d, range, score, fastIncoming
                 targetEta, targetSpeed = eta, speed
             end
         end
@@ -3758,10 +3739,10 @@ arTick = function()
         end
     end
     local globalGap = targetFast
-        and math.clamp(0.01 + (targetDistance / targetRange) * 0.01, 0.01, 0.02)
+        and math.clamp(0.025 + (targetDistance / targetRange) * 0.015, 0.025, 0.04)
         or (frontRow
-            and math.clamp(0.025 + (targetDistance / targetRange) * 0.015, 0.025, 0.04)
-            or math.clamp(0.025 + (targetDistance / targetRange) * 0.02, 0.025, 0.045))
+            and math.clamp(0.03 + (targetDistance / targetRange) * 0.02, 0.03, 0.05)
+            or math.clamp(0.03 + (targetDistance / targetRange) * 0.03, 0.03, 0.06))
     if now - arLastFire < globalGap then return end
     local move
     if AutoReceiveMode == "Set" then
@@ -3775,23 +3756,12 @@ arTick = function()
     else
         move = airborne and "JumpSet" or "Set"
     end
-    local holdDuration = targetFast and math.clamp(targetEta + 0.12, 0.10, 0.25)
-        or math.clamp(targetEta + 0.06, 0.06, 0.2)
-    -- Fire while arrival is inside the forecast window; the hold is sized to
-    -- still be down at contact, and short cooldowns keep coverage across it.
-    if targetFast and targetEta > 0.40 then return end
-    -- Arrival gate: never spray presses at balls seconds away. Fire when the
-    -- press will still be down at contact, pricing in the input round trip
-    -- (replicated ball state lags ~ping/2, press takes ~ping/2 to land).
-    if targetEta ~= math.huge and targetEta > holdDuration + 0.10 + arPingComp * 0.75 and targetDistance > 12 then
-        pushReceiveStatus("Tracking ball...", targetDistance)
-        return
-    end
+    local holdDuration = targetFast and 0.085 or (frontRow and 0.065 or 0.03)
     arLastFire = now
     arNeedReset = true
     arLastFireVel = target.p.AssemblyLinearVelocity
     if fireAutoReceive(move, holdDuration) then
-        arFiredAt[target.m] = { t = now, v = target.p.AssemblyLinearVelocity }
+        arFiredAt[target.m] = { t = now }
         -- Step-in window follows the press: hold + margin, bounded so a slow
         -- ball costs little control and a fast ball gets the full run.
         local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
@@ -3828,9 +3798,10 @@ arTick = function()
                     -- so curves and fast balls don't outdate the target.
                     local bp = target.p
                     if bp and bp.Parent then
+                        local stepT = 0.3
                         local bv = bp.AssemblyLinearVelocity
-                        local q = bp.Position + bv * arPredictT
-                        q = Vector3.new(q.X, math.max(q.Y - 0.5 * gravNow * arPredictT * arPredictT, 0.5), q.Z)
+                        local q = bp.Position + bv * stepT
+                        q = Vector3.new(q.X, math.max(q.Y - 0.5 * gravNow * stepT * stepT, 0.5), q.Z)
                         pcall(function()
                             humanoid:MoveTo(Vector3.new(q.X, rootPart.Position.Y, q.Z))
                         end)
