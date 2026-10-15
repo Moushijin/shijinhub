@@ -153,12 +153,12 @@ local Options = OrionLib.Flags
 -- is created: Orion resolves theme colors at creation time, so everything
 -- built afterwards picks this up.
 OrionLib.Themes.Default = {
-    Main = Color3.fromRGB(15, 15, 35),
-    Second = Color3.fromRGB(30, 28, 53),
-    Stroke = Color3.fromRGB(76, 29, 149),
-    Divider = Color3.fromRGB(39, 39, 59),
+    Main = Color3.fromRGB(12, 12, 28),
+    Second = Color3.fromRGB(33, 29, 66),
+    Stroke = Color3.fromRGB(109, 40, 217),
+    Divider = Color3.fromRGB(48, 44, 80),
     Text = Color3.fromRGB(255, 255, 255),
-    TextDark = Color3.fromRGB(148, 163, 184),
+    TextDark = Color3.fromRGB(168, 178, 198),
 }
 
 -- Filesystem safety net: Orion core and the slot system both touch the
@@ -3484,7 +3484,7 @@ local function fireAutoReceive(move, holdDuration)
 end
 local function scanBalls(root)
     local nowS = os.clock()
-    if nowS - ballCacheT > 0.02 then
+    if nowS - ballCacheT > 0.25 then
         ballCacheT = nowS
         local found = VX.scanFound
         VX.clear(found)
@@ -3628,7 +3628,7 @@ arTick = function()
         local relativeSpeedSq = relativeVelocity:Dot(relativeVelocity)
         local eta = relativeSpeedSq > 1 and math.clamp(toPlayer:Dot(relativeVelocity) / relativeSpeedSq, 0, 0.35) or math.huge
         local fastIncoming = speed >= 85 and worldClosing >= 15 and eta <= 0.30
-        if worldClosing < -15 then
+        if worldClosing < -10 then
             if entry.d < farDistance then farDistance = entry.d end
         else
         -- Very fast tilted/dunk-style balls get an anticipatory response window.
@@ -3729,17 +3729,18 @@ arTick = function()
     else
         arMoving = false
     end
-    -- Smooth facing: ease Y-rotation toward the live forecast every tick.
-    -- Gentle enough to read as turning (never a snap), runs idle or
-    -- steering, rotation only, zero displacement.
-    do
-        local to = faceDest - rootPart.Position
-        to = Vector3.new(to.X, 0, to.Z)
-        if to.Magnitude > 1 then
-            pcall(function()
-                local cur = rootPart.CFrame
-                rootPart.CFrame = cur:Lerp(CFrame.lookAt(cur.Position, cur.Position + to.Unit), 0.15)
-            end)
+    -- Smooth facing: ease Y-rotation toward the live forecast, idle only.
+    -- Steering hands stay untouched: no turn fights your own movement.
+    if humanoid.MoveDirection.Magnitude < 0.1 then
+        do
+            local to = faceDest - rootPart.Position
+            to = Vector3.new(to.X, 0, to.Z)
+            if to.Magnitude > 1 then
+                pcall(function()
+                    local cur = rootPart.CFrame
+                    rootPart.CFrame = cur:Lerp(CFrame.lookAt(cur.Position, cur.Position + to.Unit), 0.15)
+                end)
+            end
         end
     end
     local globalGap = targetFast
@@ -3800,7 +3801,10 @@ local function setAutoReceiveEnabled(state)
         AutoReceiveCount = 0
         if not ballScanConn then
             ballScanConn = Workspace.ChildAdded:Connect(function(ch)
-                if ch:IsA("Model") or ch:IsA("BasePart") then ballCacheT = -10 end
+                if ch:IsA("Model") or ch:IsA("BasePart") then
+                    local n = ch.Name
+                    if type(n) == "string" and n:upper():find("BALL", 1, true) then ballCacheT = -10 end
+                end
             end)
         end
         if AutoReceiveConn then
@@ -3860,8 +3864,8 @@ UI.Window = Window
 
 UI.Tabs = {
     Main = Window:MakeTab({ Name = "Main", Icon = "activity", PremiumOnly = false }),
-    Receive = Window:MakeTab({ Name = "Receive", Icon = "zap", PremiumOnly = false }),
-    TSH = Window:MakeTab({ Name = "TSH Run-Up", Icon = "wind", PremiumOnly = false }),
+    Receive = Window:MakeTab({ Name = "Auto Receive", Icon = "zap", PremiumOnly = false }),
+    TSH = Window:MakeTab({ Name = "TSH Bar Lock", Icon = "wind", PremiumOnly = false }),
     Visuals = Window:MakeTab({ Name = "Visuals", Icon = "eye", PremiumOnly = false }),
     RestoreData = Window:MakeTab({ Name = "Data Rollback", Icon = "history", PremiumOnly = false }),
     Settings = Window:MakeTab({ Name = "Settings", Icon = "settings", PremiumOnly = false }),
@@ -3870,14 +3874,17 @@ UI.Tabs = {
 UI.ReceiveFeatures = UI.Tabs.Receive:AddSection({ Name = "Receive" })
 UI.ServeFeatures = UI.Tabs.Main:AddSection({ Name = "Serve" })
 UI.MoveFeatures = UI.Tabs.Main:AddSection({ Name = "Movement" })
-UI.MainVisuals = UI.Tabs.Visuals:AddSection({ Name = "Visual Features" })
+UI.VisAim = UI.Tabs.Visuals:AddSection({ Name = "Aim Predictor" })
+UI.VisBall = UI.Tabs.Visuals:AddSection({ Name = "Ball Trajectory" })
+UI.VisGhost = UI.Tabs.Visuals:AddSection({ Name = "Ghost Mode" })
+UI.VisJump = UI.Tabs.Visuals:AddSection({ Name = "Jump Tracker" })
 UI.RageFeatures = UI.Tabs.Main:AddSection({ Name = "Ball Control" })
 UI.RageTech = UI.Tabs.Main:AddSection({ Name = "Spike Tech" })
 UI.TSHFeatures = UI.Tabs.TSH:AddSection({ Name = "TSH Run-Up" })
 UI.RestoreDataFeatures = UI.Tabs.RestoreData:AddSection({ Name = "Data Rollback" })
 UI.SettingsInfo = UI.Tabs.Settings:AddSection({ Name = "Information" })
-UI.SettingsKeys = UI.Tabs.Settings:AddSection({ Name = "Key Binds" })
 UI.SettingsConfig = UI.Tabs.Settings:AddSection({ Name = "Configuration" })
+UI.SettingsKeys = UI.Tabs.Settings:AddSection({ Name = "Key Binds" })
 UI.SettingsProtection = UI.Tabs.Settings:AddSection({ Name = "Protection" })
 UI.SettingsPerformance = UI.Tabs.Settings:AddSection({ Name = "Performance" })
 UI.SettingsActions = UI.Tabs.Settings:AddSection({ Name = "Hub Actions" })
@@ -3896,7 +3903,7 @@ UI.RageFeatures:AddToggle({
     end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Hitbox Size",
     Default = 10,
     Min = 0,
@@ -3915,7 +3922,7 @@ UI.RageFeatures:AddColorpicker({
     Callback = function(Value) HitboxColor = Value end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Hitbox Transparency",
     Default = 80,
     Min = 40,
@@ -3927,19 +3934,7 @@ UI.RageFeatures:AddSlider({
     Callback = function(Value) HitboxTransparency = Value / 100 end
 })
 UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
-    Name = "Hitbox Range",
-    Default = FeatureConfig.hitboxMaxDistance,
-    Min = 20,
-    Max = 300,
-    Increment = 1,
-    ValueName = "studs",
-    Save = true,
-    Flag = "HitboxRange",
-    Callback = function(Value) FeatureConfig.hitboxMaxDistance = Value end
-})
-UI.RageFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Hitbox Refresh",
     Default = FeatureConfig.hitboxUpdateRate,
     Min = 0.03,
@@ -3983,7 +3978,7 @@ UI.RageTech:AddBind({
     end
 })
 UI.RageTech:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Counter Range",
     Default = FeatureConfig.autoSpike.range,
     Min = 12,
@@ -4003,7 +3998,7 @@ UI.RageTech:AddBind({
     Callback = function() end
 })
 UI.RageTech:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Minimum Incoming Speed",
     Default = FeatureConfig.autoSpike.minIncomingSpeed,
     Min = 1,
@@ -4103,7 +4098,7 @@ AutoReceiveInfoLabel = UI.ReceiveFeatures:AddLabel("Ball: --st  |  Received: 0")
 do
     KeyDetectorSetLabel = UI.ReceiveFeatures:AddLabel("Set Key: [Q]")
     local SetBind = UI.ReceiveFeatures:AddBind({
-        Color = Color3.fromRGB(244, 63, 94),
+        Color = Color3.fromRGB(167, 139, 250),
         Name = "Receive Key",
         Default = Enum.KeyCode.Q,
         Hold = false,
@@ -4129,7 +4124,7 @@ do
     end
 end
 UI.ReceiveFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ignore Ball Speeds Under",
     Default = AutoReceiveMinSpeed,
     Min = 0,
@@ -4197,7 +4192,7 @@ UI.TSHFeatures:AddToggle({
     end
 })
 UI.TSHFeatures:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Minimum Run-Up",
     Default = math.floor(TSHBarLock.minimumRunup * 100),
     Min = 0,
@@ -4223,8 +4218,19 @@ UI.MoveFeatures:AddToggle({
         notify(Value and "Auto Shiftlock Enabled" or "Auto Shiftlock Disabled")
     end
 })
+UI.MoveFeatures:AddBind({
+    Name = "Auto Shiftlock Key",
+    Default = Enum.KeyCode.H,
+    Hold = false,
+    Save = true,
+    Flag = "CameraJumpKeybind",
+    Callback = function()
+        local t = OrionLib.Flags["CameraJumpToggle"]
+        if t then t:Set(not t.Value) end
+    end
+})
 
-UI.MainVisuals:AddToggle({
+UI.VisAim:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Aim Predictor",
     Default = PredictAimEnabled,
@@ -4237,8 +4243,8 @@ UI.MainVisuals:AddToggle({
         else clearAllPredictAim() notify("Aim Predictor Disabled") end
     end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisAim:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Length",
     Default = PredictAimLength,
     Min = 0,
@@ -4249,15 +4255,15 @@ UI.MainVisuals:AddSlider({
     Flag = "PredictAimLength",
     Callback = function(Value) PredictAimLength = Value end
 })
-UI.MainVisuals:AddColorpicker({
+UI.VisAim:AddColorpicker({
     Name = "Aim Predictor Color",
     Default = PredictAimColor,
     Save = true,
     Flag = "PredictAimColor",
     Callback = function(Value) PredictAimColor = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisAim:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Thickness",
     Default = FeatureConfig.predictAimThickness,
     Min = 0.05,
@@ -4267,8 +4273,8 @@ UI.MainVisuals:AddSlider({
     Flag = "PredictAimThickness",
     Callback = function(Value) FeatureConfig.predictAimThickness = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisAim:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Transparency",
     Default = FeatureConfig.predictAimTransparency,
     Min = 0,
@@ -4278,8 +4284,8 @@ UI.MainVisuals:AddSlider({
     Flag = "PredictAimTransparency",
     Callback = function(Value) FeatureConfig.predictAimTransparency = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisAim:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Prediction Range",
     Default = FeatureConfig.predictAimMaxDistance,
     Min = 50,
@@ -4291,7 +4297,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.predictAimMaxDistance = Value end
 })
 
-UI.MainVisuals:AddToggle({
+UI.VisBall:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Ball Trajectory",
     Default = false,
@@ -4311,23 +4317,23 @@ UI.MainVisuals:AddToggle({
         end
     end
 })
-BallESP.statusLabel = UI.MainVisuals:AddLabel("State: off")
-UI.MainVisuals:AddColorpicker({
+BallESP.statusLabel = UI.VisBall:AddLabel("State: off")
+UI.VisBall:AddColorpicker({
     Name = "Ball Path Color",
     Default = BallESP.lineColor,
     Save = true,
     Flag = "BallESPLineColor",
     Callback = function(Value) BallESP.lineColor = Value end
 })
-UI.MainVisuals:AddColorpicker({
+UI.VisBall:AddColorpicker({
     Name = "Landing Circle Color",
     Default = BallESP.landColor,
     Save = true,
     Flag = "BallESPLandColor",
     Callback = function(Value) BallESP.landColor = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisBall:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Path Transparency",
     Default = 0.55,
     Min = 0,
@@ -4337,8 +4343,8 @@ UI.MainVisuals:AddSlider({
     Flag = "BallESPTransparency",
     Callback = function(Value) BallESP.transparency = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisBall:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Landing Circle Size",
     Default = 7,
     Min = 2,
@@ -4349,8 +4355,8 @@ UI.MainVisuals:AddSlider({
     Flag = "BallESPCircleSize",
     Callback = function(Value) BallESP.circleSize = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisBall:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Gravity Tune",
     Default = 1,
     Min = 0.5,
@@ -4360,7 +4366,7 @@ UI.MainVisuals:AddSlider({
     Flag = "BallESPGravity",
     Callback = function(Value) BallESP.gravityScale = Value end
 })
-UI.MainVisuals:AddDropdown({
+UI.VisBall:AddDropdown({
     Name = "Ball ESP Quality",
     Default = "Balanced",
     Options = {"Low", "Balanced", "High"},
@@ -4368,7 +4374,7 @@ UI.MainVisuals:AddDropdown({
     Flag = "BallESPQuality",
     Callback = function(Value) BallESP.setQuality(Value) end
 })
-UI.MainVisuals:AddToggle({
+UI.VisBall:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Use Beam Path",
     Default = BallESP.useBeams,
@@ -4379,8 +4385,8 @@ UI.MainVisuals:AddToggle({
         if not Value then BallESP.hideBeams() end
     end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisBall:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ball Minimum Speed",
     Default = BallESP.minSpeed,
     Min = 0,
@@ -4391,8 +4397,8 @@ UI.MainVisuals:AddSlider({
     Flag = "BallESPMinSpeed",
     Callback = function(Value) BallESP.minSpeed = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisBall:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ball ESP Range",
     Default = BallESP.maxDistance,
     Min = 50,
@@ -4403,8 +4409,8 @@ UI.MainVisuals:AddSlider({
     Flag = "BallESPRange",
     Callback = function(Value) BallESP.maxDistance = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisBall:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Trajectory Maximum Time",
     Default = BALL_ESP_MAX_T,
     Min = 1,
@@ -4415,7 +4421,7 @@ UI.MainVisuals:AddSlider({
     Flag = "BallESPMaxTime",
     Callback = function(Value) BALL_ESP_MAX_T = Value end
 })
-UI.MainVisuals:AddToggle({
+UI.VisGhost:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Ghost Mode",
     Default = false,
@@ -4427,7 +4433,7 @@ UI.MainVisuals:AddToggle({
         else disableStreamerMode() notify("Ghost Mode OFF", 3) end
     end
 })
-UI.MainVisuals:AddToggle({
+UI.VisGhost:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Hide Local Name",
     Default = FeatureConfig.streamerHideSelf,
@@ -4440,8 +4446,8 @@ UI.MainVisuals:AddToggle({
         end
     end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisGhost:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Ghost Refresh Rate",
     Default = FeatureConfig.streamerRefreshRate,
     Min = 0.5,
@@ -4453,7 +4459,7 @@ UI.MainVisuals:AddSlider({
     Callback = function(Value) FeatureConfig.streamerRefreshRate = Value end
 })
 
-UI.MainVisuals:AddToggle({
+UI.VisJump:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Jump Tracker",
     Default = JumpESPEnabled,
@@ -4466,15 +4472,15 @@ UI.MainVisuals:AddToggle({
         else clearAllJumpESP() notify("Jump Tracker Disabled") end
     end
 })
-UI.MainVisuals:AddColorpicker({
+UI.VisJump:AddColorpicker({
     Name = "Jump Tracker Color",
     Default = JumpESPColor,
     Save = true,
     Flag = "JumpESPColor",
     Callback = function(Value) JumpESPColor = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisJump:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Jump Tracker Fill Transparency",
     Default = FeatureConfig.jumpEspFillTransparency,
     Min = 0,
@@ -4484,8 +4490,8 @@ UI.MainVisuals:AddSlider({
     Flag = "JumpESPFill",
     Callback = function(Value) FeatureConfig.jumpEspFillTransparency = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisJump:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Jump Tracker Outline Transparency",
     Default = FeatureConfig.jumpEspOutlineTransparency,
     Min = 0,
@@ -4495,8 +4501,8 @@ UI.MainVisuals:AddSlider({
     Flag = "JumpESPOutline",
     Callback = function(Value) FeatureConfig.jumpEspOutlineTransparency = Value end
 })
-UI.MainVisuals:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+UI.VisJump:AddSlider({
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Jump Tracker Range",
     Default = FeatureConfig.jumpEspMaxDistance,
     Min = 50,
@@ -4507,7 +4513,7 @@ UI.MainVisuals:AddSlider({
     Flag = "JumpESPRange",
     Callback = function(Value) FeatureConfig.jumpEspMaxDistance = Value end
 })
-UI.MainVisuals:AddToggle({
+UI.VisJump:AddToggle({
     Color = Color3.fromRGB(244, 63, 94),
     Name = "Jump Tracker Through Walls",
     Default = FeatureConfig.jumpEspAlwaysOnTop,
@@ -4572,7 +4578,7 @@ UI.SettingsProtection:AddToggle({
     Callback = function(Value) FeatureConfig.notifications = Value end
 })
 UI.SettingsProtection:AddSlider({
-    Color = Color3.fromRGB(244, 63, 94),
+    Color = Color3.fromRGB(167, 139, 250),
     Name = "Notification Duration",
     Default = FeatureConfig.notificationLifetime,
     Min = 1,
@@ -4884,6 +4890,15 @@ UI.SettingsConfig:AddButton({
 local function shijinFullCleanup()
     if ShijinUnloaded then return end
     ShijinUnloaded = true
+    -- Manual power-down: run every toggle's own disable path first so each
+    -- feature shuts itself off instead of trusting flag writes alone.
+    pcall(function()
+        for _, obj in pairs(OrionLib.Flags) do
+            if type(obj) == "table" and obj.Type == "Toggle" and type(obj.Set) == "function" then
+                pcall(function() obj:Set(false) end)
+            end
+        end
+    end)
     FeatureConfig.autoSpinRunId = FeatureConfig.autoSpinRunId + 1
     cameraTurnToken = cameraTurnToken + 1
     pcall(function() if getgenv then getgenv().ShijinHubLoaded = false end end)
