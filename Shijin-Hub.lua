@@ -3684,10 +3684,20 @@ arTick = function()
         return
     end
     -- Vertical reach gate: never press at balls arriving over your head.
-    if targetEta ~= math.huge and targetEta < 1.0 then
+    -- Arrival is judged on the ball's own motion (world frame), so sprinting
+    -- can't fake it - and with no time cap, high balls are judged at any range.
+    local wEta = math.huge
+    do
         local tv = target.p.AssemblyLinearVelocity
-        local ap = target.p.Position + tv * targetEta
-        ap = Vector3.new(ap.X, math.max(ap.Y - 0.5 * arGravity * targetEta * targetEta, 0.3), ap.Z)
+        local toT = rootPart.Position - target.p.Position
+        if toT.Magnitude > 0.1 and tv.Magnitude > 1 then
+            wEta = math.clamp(toT:Dot(tv) / tv:Dot(tv), 0, math.huge)
+        end
+    end
+    if wEta ~= math.huge then
+        local tv = target.p.AssemblyLinearVelocity
+        local ap = target.p.Position + tv * wEta
+        ap = Vector3.new(ap.X, math.max(ap.Y - 0.5 * arGravity * wEta * wEta, 0.3), ap.Z)
         if ap.Y > rootPart.Position.Y + (airborne and 18 or 12) then
             pushReceiveStatus("Over head", targetDistance)
             return
