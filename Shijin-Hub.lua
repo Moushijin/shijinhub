@@ -3416,7 +3416,7 @@ end)
 
 local AutoReceiveEnabled = false
 local AutoReceiveMode = "Set"
-local AutoReceiveMinSpeed = 50
+local AutoReceiveMinSpeed = 10
 local AutoReceiveCount = 0
 local AutoReceiveStatusLabel = nil
 local AutoReceiveInfoLabel = nil
@@ -3678,6 +3678,38 @@ arTick = function()
                 if r then humanoid:MoveTo(r.Position) end
             end)
         end
+        -- Pre-positioning: idle only, walk the nearest inbound ball's forecast
+        -- so we're already moving before the fire window opens.
+        if humanoid.MoveDirection.Magnitude < 0.1
+            and humanoid.FloorMaterial ~= Enum.Material.Air
+            and not (SpeedEnabled and SpeedValue > 0) then
+            local bestD, bestP = math.huge, nil
+            for _, entry in ipairs(balls) do
+                local part = entry.p
+                if part and part.Parent then
+                    local vel = part.AssemblyLinearVelocity
+                    local spd = math.max(entry.spd or 0, vel.Magnitude)
+                    if spd >= AutoReceiveMinSpeed then
+                        local toP = rootPart.Position - part.Position
+                        local wc = toP.Magnitude > 0.1 and vel:Dot(toP.Unit) or 0
+                        if wc > -5 then
+                            local q = part.Position + vel * 0.6
+                            q = Vector3.new(q.X, math.max(q.Y - 0.5 * arGravity * 0.36, 0.5), q.Z)
+                            local hd = Vector3.new(q.X - rootPart.Position.X, 0, q.Z - rootPart.Position.Z).Magnitude
+                            if hd < bestD then bestD, bestP = hd, q end
+                        end
+                    end
+                end
+            end
+            if bestP and bestD > 4 then
+                pcall(function()
+                    humanoid:MoveTo(Vector3.new(bestP.X, rootPart.Position.Y, bestP.Z))
+                end)
+                arMoving = true
+            end
+        else
+            arMoving = false
+        end
         if slowDistance < math.huge then
             pushReceiveStatus("Waiting for ball speed", slowDistance)
         elseif farDistance < math.huge then
@@ -3762,10 +3794,15 @@ arTick = function()
         move = airborne and "JumpSet" or "Set"
     end
     local holdDuration = targetFast and math.clamp(targetEta + 0.08, 0.085, 0.20)
-        or (frontRow and 0.065 or 0.03)
-    -- Fire while arrival is inside the forecast window; the hold is sized to
-    -- still be down at contact, and short cooldowns keep coverage across it.
-    if targetFast and targetEta > 0.30 then return end
+        or math.clamp(targetEta + 0.06, 0.06, 0.2)
+    -- Speed-reactive fire window: faster balls get a later, tighter window so
+    -- the press always covers contact instead of expiring early. Close balls
+    -- are exempt so dead balls beside you still get picked up.
+    local fireWindow = math.clamp(0.30 - targetSpeed / 1000, 0.12, 0.30)
+    if targetEta ~= math.huge and targetEta > fireWindow and targetDistance > 12 then
+        pushReceiveStatus("Tracking ball...", targetDistance)
+        return
+    end
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
