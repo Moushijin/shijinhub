@@ -3714,6 +3714,28 @@ arTick = function()
     arLastFire = now
     if fireAutoReceive(move, holdDuration) then
         arFiredAt[target.m] = { t = now }
+        -- Micro-movement: walk at the predicted contact on every receive, so
+        -- the character is both positioned and facing the ball. Humanoid
+        -- walking only (style speed, zero forced displacement) - held keys
+        -- always win over MoveTo, so this never fights your input.
+        do
+            local dest = target.predPos or target.p.Position
+            dest = Vector3.new(dest.X, rootPart.Position.Y, dest.Z)
+            local gap = dest - rootPart.Position
+            gap = Vector3.new(gap.X, 0, gap.Z).Magnitude
+            if gap > 4 and not (SpeedEnabled and SpeedValue > 0) then
+                local stepWindow = math.clamp(holdDuration + 0.05, 0.1, 0.3)
+                pcall(function() humanoid:MoveTo(dest) end)
+                task.delay(stepWindow, function()
+                    pcall(function()
+                        if humanoid.Parent and humanoid.MoveDirection.Magnitude < 0.1 then
+                            local r = char and char:FindFirstChild("HumanoidRootPart")
+                            if r then humanoid:MoveTo(r.Position) end
+                        end
+                    end)
+                end)
+            end
+        end
         AutoReceiveCount = AutoReceiveCount + 1
         local suffix = targetFast and " (Fast)" or (frontRow and " (Front)" or "")
         pushReceiveStatus("Pressed " .. move .. suffix, targetDistance)
